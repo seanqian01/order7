@@ -25,7 +25,7 @@ def strategy_detail(request, pk):
     try:
         strategy = Strategy.objects.get(pk=pk)
     except Strategy.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(data={'msg': '没有找到这个策略.'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
         serializer = StrategySerializer(strategy)
@@ -35,7 +35,7 @@ def strategy_detail(request, pk):
         serializer = StrategySerializer(strategy, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(data=serializer.data,status=status.HTTP_200_OK)
+            return Response(data=serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
