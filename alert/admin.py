@@ -18,19 +18,11 @@ class AlertAdmin(admin.ModelAdmin):
                     'contractType',
                     'price',
                     'action',
-                    'status_display',
+                    'status',
                     'created_at',
                     ]
     list_filter = ('created_at', 'symbol', 'contractType', 'action')
     list_per_page = 30
-
-    def colored_status(self, obj):
-        if obj.status:
-            return format_html('<span style="color: green;">{}</span>', obj.status_display)
-        else:
-            return format_html('<span style="color: red;">{}</span>', obj.status_display)
-
-    colored_status.short_description = '状态'
 
     class Media:
         def __init__(self):

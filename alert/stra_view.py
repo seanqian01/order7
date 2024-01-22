@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 
+# 策略管理
 @api_view(['GET', 'POST'])
 def strategy_list(request):
     if request.method == 'GET':

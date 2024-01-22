@@ -31,10 +31,6 @@ class stra_Alert(models.Model):
     def __str__(self):
         return self.symbol
 
-    @property
-    def status_display(self):
-        return "有效" if self.status else "无效"
-
     class Meta:
         db_table = 'stra_Alert'
         verbose_name = '交易信号提醒'
