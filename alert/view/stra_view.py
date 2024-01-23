@@ -1,8 +1,19 @@
 from rest_framework.decorators import api_view
-from .models import Strategy
-from .serializers import StrategySerializer
+from alert.models import Strategy
+from alert.serializers import StrategySerializer
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.conf import settings
+from rest_framework.authtoken.models import Token
+
+
+# 自动生成Token
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def generate_token(sender, instance=None, created=False, **kwargs):
+    if created:
+        Token.objects.create(user=instance)
 
 
 # 策略管理

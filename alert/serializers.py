@@ -10,7 +10,7 @@ class StrategySerializer(serializers.ModelSerializer):
     class Meta:
         model = Strategy
         fields = '__all__'
-        depth = 2
+        # depth = 2
 
 
 class UserSerializer(serializers.ModelSerializer):

@@ -1,12 +1,8 @@
-
-
-# Create your views here.
-import json
-
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
-from .models import stra_Alert
+from alert.models import stra_Alert
+import json
 
 
 @csrf_exempt
