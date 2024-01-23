@@ -1,4 +1,4 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes
 from alert.models import Strategy
 from alert.serializers import StrategySerializer
 from rest_framework.response import Response
@@ -7,6 +7,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
 from rest_framework.authtoken.models import Token
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication, BasicAuthentication
 
 
 # 自动生成Token
@@ -18,6 +19,7 @@ def generate_token(sender, instance=None, created=False, **kwargs):
 
 # 策略管理
 @api_view(['GET', 'POST'])
+# @authentication_classes([TokenAuthentication,SessionAuthentication,BasicAuthentication])    接口的专用认证方式
 def strategy_list(request):
     if request.method == 'GET':
         strategies = Strategy.objects.all()
