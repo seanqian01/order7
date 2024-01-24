@@ -1,5 +1,5 @@
 from django.contrib import admin
-from alert.models import stra_Alert, Strategy
+from alert.models import stra_Alert, Strategy, Merchant
 from django.utils.html import format_html
 import logging
 
@@ -36,7 +36,7 @@ class AlertAdmin(admin.ModelAdmin):
 
 
 class StrategyAdmin(admin.ModelAdmin):
-    list_display = ['strategy_name', 'status', 'strategy_time_cycle', 'stra_creater','update_time', 'create_time', ]
+    list_display = ['strategy_name', 'status', 'strategy_time_cycle', 'stra_creater', 'update_time', 'create_time', ]
     list_filter = ('strategy_name', 'status', 'strategy_time_cycle',)
     list_per_page = 30
 
@@ -51,6 +51,21 @@ class StrategyAdmin(admin.ModelAdmin):
             pass
 
 
+class MerchantAdmin(admin.ModelAdmin):
+    list_display = ['merchant_name', 'merchant_email', 'merchant_id', 'merchant_status',
+                    'merchant_update_time', 'merchant_create_time', ]
+    list_filter = ('merchant_name', 'merchant_email', 'merchant_id', 'merchant_status')
+    list_per_page = 20
+
+    def has_add_permission(self, request):
+        return True
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+
 admin.site.register(Strategy, StrategyAdmin)
 
 admin.site.register(stra_Alert, AlertAdmin)
+
+admin.site.register(Merchant, MerchantAdmin)

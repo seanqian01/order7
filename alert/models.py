@@ -87,3 +87,40 @@ class Strategy(models.Model):
 
     def __str__(self):
         return self.strategy_name
+
+
+# 商户类型表
+class MerchantStyle(models.Model):
+    merchant_style_name = models.CharField(max_length=120, unique=True, verbose_name="商户类型名称")
+
+    class Meta:
+        db_table = 'merchant_style'
+        verbose_name = '商户类型'
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return self.merchant_style_name
+
+
+# 商户基本信息表
+class Merchant(models.Model):
+    merchant_name = models.CharField(max_length=120, unique=True, verbose_name="商户名称")
+    merchant_address = models.TextField(max_length=255, blank=True, verbose_name="商户地址")
+    merchant_phone = models.CharField(max_length=11, unique=True, verbose_name="商户联系电话")
+    merchant_email = models.EmailField(max_length=120, unique=True, verbose_name="商户联系邮箱")
+    merchant_web = models.URLField(max_length=120, unique=True, verbose_name="商户网站")
+    merchant_id = models.CharField(max_length=120, unique=True, verbose_name="商户ID编号")
+    merchant_status = models.BooleanField(default=True, verbose_name="商户状态")
+    merchant_style = models.ForeignKey(MerchantStyle, on_delete=models.CASCADE, verbose_name="商户类型")
+    merchant_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="商户管理员")
+    merchant_create_time = models.DateTimeField(auto_now_add=True, verbose_name="商户创建时间")
+    merchant_update_time = models.DateTimeField(auto_now=True, verbose_name="商户更新时间")
+
+    class Meta:
+        db_table = 'merchant'
+        verbose_name = '商户基本信息'
+        verbose_name_plural = verbose_name
+        ordering = ('-merchant_update_time',)
+
+    def __str__(self):
+        return self.merchant_name
