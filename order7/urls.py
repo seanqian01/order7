@@ -17,9 +17,8 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework.documentation import include_docs_urls
 
-
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('alert.urls')),
-    path('docs/', include_docs_urls(title='VCPOS量化策略API文档',description='策略应用的全部api文档入门')),
+    path('docs/', include_docs_urls(title='VCPOS量化策略API文档', description='策略应用的全部api文档入门')),
 ]
