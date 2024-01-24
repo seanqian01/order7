@@ -1,4 +1,6 @@
-from rest_framework.decorators import api_view, authentication_classes
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
 from alert.models import Strategy
 from alert.serializers import StrategySerializer
 from rest_framework.response import Response
@@ -8,6 +10,7 @@ from django.dispatch import receiver
 from django.conf import settings
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication, BasicAuthentication
+from alert.permissions import IsOwnerOrReadOnly
 
 
 # 自动生成Token
@@ -35,6 +38,7 @@ def strategy_list(request):
 
 
 @api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated, IsOwnerOrReadOnly])
 def strategy_detail(request, pk):
     try:
         strategy = Strategy.objects.get(pk=pk)
