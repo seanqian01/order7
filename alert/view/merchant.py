@@ -1,6 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 from alert.serializers import MerchantSerializer
 from rest_framework.response import Response
@@ -14,7 +14,7 @@ def merchantlist(request):
     if request.method == 'GET':
         merchants = Merchant.objects.all()
         serializer = MerchantSerializer(merchants, many=True)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'POST':
         serializer = MerchantSerializer(data=request.data)
@@ -26,7 +26,7 @@ def merchantlist(request):
 
 # 商户信息更新接口
 @api_view(['GET', 'PUT', 'DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsAdminUser])
 def merchantdetail(request, pk):
     try:
         merchant = Merchant.objects.get(pk=pk)
@@ -35,13 +35,13 @@ def merchantdetail(request, pk):
 
     if request.method == 'GET':
         serializer = MerchantSerializer(merchant)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     elif request.method == 'PUT':
         serializer = MerchantSerializer(merchant, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
