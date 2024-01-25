@@ -69,12 +69,28 @@ class MyUserAdmin(UserAdmin):
                     'user_type', 'date_joined', ]
     list_filter = ('username', 'email', 'is_active', 'telephone', 'sid')
     list_per_page = 20
+    fieldsets = ()
+
+    add_fieldsets = (
+        (
+            None, {
+                'classes': ('wide',),
+                'fields': (
+                    'username', 'password1', 'password2', 'email', 'is_staff', 'is_active', 'telephone', 'user_type',
+                    'sid',),
+            }
+        ),
+    )
 
     def has_add_permission(self, request):
         return True
 
     def has_change_permission(self, request, obj=None):
         return True
+
+    class Media:
+        def __init__(self):
+            pass
 
 
 admin.site.register(Strategy, StrategyAdmin)
