@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework.authtoken import views
-from alert.view import signal, stra_view, merchant
+from alert.view import signal, stra_view, merchant, user
 
 urlpatterns = [
     path('webhook/', signal.webhook, name='webhook'),
@@ -12,4 +12,6 @@ urlpatterns = [
     path('merchant/detail/<int:pk>/', merchant.merchantdetail, name='Merchant Detail'),
 
     path('api/token-auth/', views.obtain_auth_token, name='Token Create'),
+    path('login/', user.LoginView.as_view(), name='User Login'),
+
 ]
