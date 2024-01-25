@@ -1,5 +1,5 @@
 from django.db import models
-
+from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 
 
@@ -11,6 +11,27 @@ class TimeCycle(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class User(AbstractUser):
+    # 用户类型
+    user_type_choices = (
+        (1, "系统管理员"),
+        (2, "普通用户"),
+        (3, "商户管理员"),
+    )
+    user_type = models.PositiveSmallIntegerField(default=2, choices=user_type_choices, verbose_name="用户类型")
+    telephone = models.CharField(max_length=11, verbose_name='手机号码')
+    name = models.CharField(max_length=12, verbose_name='用户姓名')
+    sid = models.CharField(max_length=24, blank=True, verbose_name='身份证')
+
+    class Meta:
+        db_table = 'User'
+        verbose_name = '系统用户'
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return self.username
 
 
 class stra_Alert(models.Model):

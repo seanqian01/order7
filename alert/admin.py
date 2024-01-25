@@ -1,6 +1,6 @@
 from django.contrib import admin
-from alert.models import stra_Alert, Strategy, Merchant
-from django.utils.html import format_html
+from alert.models import stra_Alert, Strategy, Merchant, User
+from django.contrib.auth.admin import UserAdmin
 import logging
 
 logger = logging.getLogger(__name__)
@@ -64,8 +64,23 @@ class MerchantAdmin(admin.ModelAdmin):
         return True
 
 
+class MyUserAdmin(UserAdmin):
+    list_display = ['username', 'name', 'email', 'is_staff', 'is_active', 'telephone',
+                    'user_type', 'date_joined', ]
+    list_filter = ('username', 'email', 'is_active', 'telephone', 'sid')
+    list_per_page = 20
+
+    def has_add_permission(self, request):
+        return True
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+
 admin.site.register(Strategy, StrategyAdmin)
 
 admin.site.register(stra_Alert, AlertAdmin)
 
 admin.site.register(Merchant, MerchantAdmin)
+
+admin.site.register(User, MyUserAdmin)
