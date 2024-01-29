@@ -15,7 +15,6 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
@@ -26,7 +25,6 @@ SECRET_KEY = 'django-insecure-(*!_dfz48--0l_(7$jpu=x4@wkjpe-7#g9%^54&$&do2u6kdm#
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
 
 # Application definition
 
@@ -73,7 +71,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'order7.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
@@ -103,7 +100,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/4.1/topics/i18n/
 
@@ -132,10 +128,14 @@ CORS_ORIGIN_WHITELIST = (
     'http://localhost',
     'https://127.0.0.1',
     'https://api.iaiking.com',
-    'https://www.tradingview.com'
+    'https://www.tradingview.com',
+    'http://iaiblog.com',
 )
 
-CSRF_TRUSTED_ORIGINS = ['https://api.iaiking.com', 'https://www.tradingview.com']
+CSRF_TRUSTED_ORIGINS = ['https://api.iaiking.com',
+                        'https://www.tradingview.com',
+                        'http://iaiblog.com',
+                        ]
 
 CORS_ALLOW_METHODS = (
     'DELETE',
