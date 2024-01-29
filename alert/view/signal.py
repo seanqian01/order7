@@ -63,7 +63,7 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                     # amount=alert_amount,
                     created_at=timezone.now(),
                 )
-                print(trading_view_alert_data)
+                print(trading_view_alert_data.scode, trading_view_alert_data.price)
                 trading_view_alert_data.save()
 
                 # 调用过滤函数
