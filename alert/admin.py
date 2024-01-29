@@ -21,7 +21,7 @@ class AlertAdmin(admin.ModelAdmin):
                     'status',
                     'created_at',
                     ]
-    list_filter = ('created_at', 'symbol', 'contractType', 'action')
+    list_filter = ('created_at', 'scode', 'contractType', 'action')
     list_per_page = 30
 
     class Media:
