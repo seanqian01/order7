@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -65,8 +66,13 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 trading_view_alert_data.save()
 
                 # 调用过滤函数
-                filter_trade_signal(trading_view_alert_data)
-                return HttpResponse('成功接收数据且存储完成', status=200)
+                # filter_trade_signal(trading_view_alert_data)
+                with transaction.atomic():
+                    # 在事务中处理信号
+                    response = filter_trade_signal(trading_view_alert_data)
+                # return HttpResponse('成功接收数据且存储完成', status=200)
+                return HttpResponse(response.data['message'], status=response.status_code)
+
             else:
                 return HttpResponse('信号无效请重试', status=300)
     return HttpResponse('没有数据接收到', status=400)

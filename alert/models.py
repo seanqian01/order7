@@ -46,11 +46,11 @@ class stra_Alert(models.Model):
     contractType = models.IntegerField(choices=C_TYPE, blank=True, null=True, verbose_name="交易合约类型")
     price = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="价格")
     action = models.CharField(max_length=100, verbose_name="交易方向")
-    status = models.BooleanField(default=False, blank=True, verbose_name="状态")
+    status = models.BooleanField(default=False, blank=True, verbose_name="有效性")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="触发时间")
 
     def __str__(self):
-        return self.symbol
+        return self.scode
 
     class Meta:
         db_table = 'stra_Alert'
