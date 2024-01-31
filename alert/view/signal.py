@@ -90,6 +90,10 @@ def process_signal_queue():
         # 从队列中获取信号
         alert_data = signal_queue.get()
 
+        # 检测是否为 "终止" 信号
+        if alert_data is None:
+            break
+
         # 将信号保存到数据库
         alert_data.save()
 
@@ -105,4 +109,6 @@ signal_thread.start()
 
 # 在 Django 项目退出时终止线程
 def on_exit(sender, **kwargs):
+    # 向队列中添加一个特殊的 "终止" 信号
+    signal_queue.put(None)
     signal_thread.join()
