@@ -6,6 +6,11 @@ from alert.models import stra_Alert
 import json
 from rest_framework.response import Response
 from rest_framework import status
+from queue import Queue
+from threading import Thread
+
+# 创建一个全局队列
+signal_queue = Queue()
 
 
 def filter_trade_signal(alert_data):
@@ -50,9 +55,6 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 alert_action = json_data.get('action')
                 # alert_amount = json_data.get('amount')
 
-                # alert_message = json_data['message']
-                # beijing_tz = timezone(timedelta(hours=8), 'Asia/Shanghai')
-                # utc_time = datetime.utcnow()
                 trading_view_alert_data = stra_Alert(
                     alert_title=alert_title1,
                     symbol=alert_symbol,
@@ -63,17 +65,44 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                     # amount=alert_amount,
                     created_at=timezone.now(),
                 )
-                print(trading_view_alert_data.scode, trading_view_alert_data.price)
-                trading_view_alert_data.save()
+                # print(trading_view_alert_data.scode, trading_view_alert_data.price)
+                # trading_view_alert_data.save()
+
+                # 将信号放入队列
+                signal_queue.put(trading_view_alert_data)
 
                 # 调用过滤函数
                 # filter_trade_signal(trading_view_alert_data)
-                with transaction.atomic():
-                    # 在事务中处理信号
-                    response = filter_trade_signal(trading_view_alert_data)
-                # return HttpResponse('成功接收数据且存储完成', status=200)
-                return HttpResponse(response.data['message'], status=response.status_code)
+                # with transaction.atomic():
+                #     # 在事务中处理信号
+                #     response = filter_trade_signal(trading_view_alert_data)
+                return HttpResponse('成功接收数据且存储完成', status=200)
+                # return HttpResponse(response.data['message'], status=response.status_code)
 
             else:
                 return HttpResponse('信号无效请重试', status=300)
     return HttpResponse('没有数据接收到', status=400)
+
+
+# 处理队列中的信号的函数
+def process_signal_queue():
+    while True:
+        # 从队列中获取信号
+        alert_data = signal_queue.get()
+
+        # 将信号保存到数据库
+        alert_data.save()
+
+        # 在事务中处理信号
+        with transaction.atomic():
+            filter_trade_signal(alert_data)
+
+
+# 创建一个线程来处理队列中的信号
+signal_thread = Thread(target=process_signal_queue)
+signal_thread.start()
+
+
+# 在 Django 项目退出时终止线程
+def on_exit():
+    signal_thread.join()

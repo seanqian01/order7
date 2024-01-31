@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.authtoken import views
 from alert.view import signal, stra_view, merchant, user
+from django.core.signals import request_finished
 
 urlpatterns = [
     path('webhook/', signal.webhook, name='webhook'),
@@ -15,3 +16,6 @@ urlpatterns = [
     path('login/', user.LoginView.as_view(), name='User Login'),
 
 ]
+
+# 在 Django 项目退出时调用 on_exit 函数
+request_finished.connect(signal.on_exit)
