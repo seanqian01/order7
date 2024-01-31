@@ -104,5 +104,5 @@ signal_thread.start()
 
 
 # 在 Django 项目退出时终止线程
-def on_exit():
+def on_exit(sender, **kwargs):
     signal_thread.join()
