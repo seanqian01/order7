@@ -1,3 +1,5 @@
+import atexit
+import signal
 from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -6,11 +8,12 @@ from alert.models import stra_Alert
 import json
 from rest_framework.response import Response
 from rest_framework import status
-from queue import Queue
-from threading import Thread
+from queue import Queue, Empty
+from threading import Thread, Event
 
 # 创建一个全局队列
 signal_queue = Queue()
+exit_event = Event()  # 新增一个Event对象
 
 
 def filter_trade_signal(alert_data):
@@ -87,12 +90,19 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
 # 处理队列中的信号的函数
 def process_signal_queue():
     while True:
-        # 从队列中获取信号
-        alert_data = signal_queue.get()
+        try:
+            # 从队列中获取信号
+            alert_data = signal_queue.get(timeout=1)  # 设置timeout以允许检查 exit_event
+        except Empty:
+            # 如果队列超时未收到信号，检查是否需要退出
+            if exit_event.is_set() and signal_queue.empty():
+                print("Exiting process_signal_queue loop.")
+                break  # 退出循环
+            else:
+                continue
 
-        # 检测是否为 "终止" 信号
-        if alert_data is None:
-            break
+        # 打印信号信息
+        print(f"Received signal: {alert_data}")
 
         # 将信号保存到数据库
         alert_data.save()
@@ -107,8 +117,14 @@ signal_thread = Thread(target=process_signal_queue)
 signal_thread.start()
 
 
-# 在 Django 项目退出时终止线程
-def on_exit(sender, **kwargs):
-    # 向队列中添加一个特殊的 "终止" 信号
-    signal_queue.put(None)
-    signal_thread.join()
+def on_exit(signum, frame):
+    # 在收到 Ctrl+C 信号时设置退出标志
+    exit_event.set()
+
+
+# 注册 Ctrl+C 信号处理函数
+signal.signal(signal.SIGINT, on_exit)
+
+# 在 Django 项目退出时设置 exit_event，通知线程退出
+atexit.register(exit_event.set)
+atexit.register(signal_thread.join)

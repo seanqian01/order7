@@ -17,5 +17,4 @@ urlpatterns = [
 
 ]
 
-# 在 Django 项目退出时调用 on_exit 函数
-request_finished.connect(signal.on_exit)
+
