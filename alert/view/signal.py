@@ -1,5 +1,4 @@
 import atexit
-import signal
 from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -115,15 +114,6 @@ def process_signal_queue():
 # 创建一个线程来处理队列中的信号
 signal_thread = Thread(target=process_signal_queue)
 signal_thread.start()
-
-
-def on_exit(signum, frame):
-    # 在收到 Ctrl+C 信号时设置退出标志
-    exit_event.set()
-
-
-# 注册 Ctrl+C 信号处理函数
-signal.signal(signal.SIGINT, on_exit)
 
 # 在 Django 项目退出时设置 exit_event，通知线程退出
 atexit.register(exit_event.set)
