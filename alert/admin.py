@@ -13,6 +13,7 @@ admin.site.site_title = "量化交易管理系统--sean"
 class AlertAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
     list_display = ['alert_title',
+                    'time_circle',
                     'symbol',
                     'scode',
                     'contractType',

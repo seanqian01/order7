@@ -48,6 +48,7 @@ class stra_Alert(models.Model):
     action = models.CharField(max_length=100, verbose_name="交易方向")
     status = models.BooleanField(default=False, blank=True, verbose_name="有效性")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="触发时间")
+    time_circle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, null=True, blank=True, verbose_name="时间周期")
 
     def __str__(self):
         return self.scode

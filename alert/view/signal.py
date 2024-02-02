@@ -1,18 +1,11 @@
-import atexit
 from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
-from alert.models import stra_Alert
+from alert.models import stra_Alert, TimeCycle
 import json
 from rest_framework.response import Response
 from rest_framework import status
-from queue import Queue, Empty
-from threading import Thread, Event
-
-# 创建一个全局队列
-signal_queue = Queue()
-exit_event = Event()  # 新增一个Event对象
 
 
 def filter_trade_signal(alert_data):
@@ -55,7 +48,10 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 alert_contractType = json_data.get('contractType')
                 alert_price = json_data.get('price')
                 alert_action = json_data.get('action')
-                # alert_amount = json_data.get('amount')
+                time_circle_name = json_data.get('time_circle')  # 获取时间周期名称
+
+                # 查询或创建对应的 TimeCycle 实例
+                time_circle_instance, created = TimeCycle.objects.get_or_create(name=time_circle_name)
 
                 trading_view_alert_data = stra_Alert(
                     alert_title=alert_title1,
@@ -64,57 +60,16 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                     contractType=alert_contractType,
                     price=alert_price,
                     action=alert_action,
-                    # amount=alert_amount,
                     created_at=timezone.now(),
+                    time_circle=time_circle_instance  # 将 time_circle 字段设置为对应的 TimeCycle 实例
                 )
-                # print(trading_view_alert_data.scode, trading_view_alert_data.price)
-                # trading_view_alert_data.save()
-
-                # 将信号放入队列
-                signal_queue.put(trading_view_alert_data)
+                trading_view_alert_data.save()
 
                 # 调用过滤函数
-                # filter_trade_signal(trading_view_alert_data)
-                # with transaction.atomic():
-                #     # 在事务中处理信号
-                #     response = filter_trade_signal(trading_view_alert_data)
-                return HttpResponse('成功接收数据且存储完成', status=200)
-                # return HttpResponse(response.data['message'], status=response.status_code)
+                response = filter_trade_signal(trading_view_alert_data)
+
+                return HttpResponse(response.data['message'], status=response.status_code)
 
             else:
                 return HttpResponse('信号无效请重试', status=300)
     return HttpResponse('没有数据接收到', status=400)
-
-
-# 处理队列中的信号的函数
-def process_signal_queue():
-    while True:
-        try:
-            # 从队列中获取信号
-            alert_data = signal_queue.get(timeout=1)  # 设置timeout以允许检查 exit_event
-        except Empty:
-            # 如果队列超时未收到信号，检查是否需要退出
-            if exit_event.is_set() and signal_queue.empty():
-                print("Exiting process_signal_queue loop.")
-                break  # 退出循环
-            else:
-                continue
-
-        # 打印信号信息
-        print(f"Received signal: {alert_data}")
-
-        # 将信号保存到数据库
-        alert_data.save()
-
-        # 在事务中处理信号
-        with transaction.atomic():
-            filter_trade_signal(alert_data)
-
-
-# 创建一个线程来处理队列中的信号
-signal_thread = Thread(target=process_signal_queue)
-signal_thread.start()
-
-# 在 Django 项目退出时设置 exit_event，通知线程退出
-atexit.register(exit_event.set)
-atexit.register(signal_thread.join)
