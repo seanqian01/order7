@@ -97,12 +97,12 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
 
 
 if __name__ == "__main__":
-    spi = CMdSpiImpl(config.fronts["通惠测试"]["md"])
+    spi = CMdSpiImpl(config.fronts["电信1"]["md"])
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
     instruments = ("rb2405",
-                   "FUK2405",
-                   "SP2405"
+                   "fu2405",
+                   "sp2405"
                    )
 
     spi.wait()
