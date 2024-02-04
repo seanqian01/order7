@@ -24,13 +24,27 @@ fronts = {
         "td": "tcp://218.202.237.33:10203",
         "md": "tcp://218.202.237.33:10213",
     },
+    "通惠测试": {
+        "td": "tcp://210.22.130.34:41505",
+        "md": "tcp://210.22.130.34:41513",
+    },
 }
 
-# 投资者ID / 密码
+#simnow投资者ID / 密码
 user = "221882"
 password = "mikalqlr001!"
 
-# 以下为连接 SimNow 环境的固定值
+#以下为连接 SimNow 环境的固定值
 broker_id = "9999"
 authcode = "0000000000000000"
 appid = "simnow_client_test"
+
+
+# # 通惠测试环境投资者ID / 密码
+# user = "08860"
+# password = "thqh1234"
+#
+# # 以下为通惠测试环境的固定值
+# broker_id = "08860"
+# authcode = "P2UAXBUJ3VPVMUBY"
+# appid = "client_vcpos_2.0"
