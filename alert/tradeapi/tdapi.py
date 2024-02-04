@@ -594,7 +594,7 @@ if __name__ == "__main__":
     # spi.qry_instrument()
     # spi.qry_instrument(exchange_id="CZCE")
     # spi.qry_instrument(product_id="AP")
-    # spi.qry_instrument(instrument_id="AP404")
+    # spi.qry_instrument(instrument_id="fu2405")
     # spi.qry_instrument_commission_rate("br2409")
     # spi.qry_instrument_commission_rate("ZC309")
     # spi.qry_instrument_margin_rate()
