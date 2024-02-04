@@ -73,6 +73,16 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
                 params.append(f"{name}={value}")
         print("深度行情通知:", ",".join(params))
 
+        # 提取 LowerLimitPrice 字段的值
+        LowerLimitPrice_value = None
+        for param in params:
+            if "LowerLimitPrice" in param:
+                LowerLimitPrice_value = param.split("=")[1]
+                break
+
+        # 打印 LowerLimitPrice 字段的值
+        print("LowerLimitPrice 值:", LowerLimitPrice_value)
+
     def OnRspSubMarketData(
             self,
             pSpecificInstrument: mdapi.CThostFtdcSpecificInstrumentField,
@@ -97,7 +107,7 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
 
 
 if __name__ == "__main__":
-    spi = CMdSpiImpl(config.fronts["电信1"]["md"])
+    spi = CMdSpiImpl(config.fronts["电信2"]["md"])
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
     instruments = ("rb2405",
