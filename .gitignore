@@ -6,7 +6,7 @@
 *.pyo
 conf.py
 .pyd
-config.py
+alert/tradeapi/config.py
 
 
 # IntelliJ project files
