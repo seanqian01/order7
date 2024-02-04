@@ -5,6 +5,8 @@
 .pyc
 *.pyo
 conf.py
+.pyd
+
 # IntelliJ project files
 .idea
 *.iml
@@ -129,6 +131,7 @@ venv.bak/
 # Spyder project settings
 .spyderproject
 .spyproject
+
 
 # Rope project settings
 .ropeproject
