@@ -6,7 +6,7 @@
 *.pyo
 conf.py
 .pyd
-alert/tradeapi/config.py
+*config.py
 *.con
 
 
