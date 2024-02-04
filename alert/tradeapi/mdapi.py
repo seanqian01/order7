@@ -100,6 +100,9 @@ if __name__ == "__main__":
     spi = CMdSpiImpl(config.fronts["电信2"]["md"])
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
-    instruments = ("au2309", "IH2309")
+    instruments = ("rb2405",
+                   "FUK2405",
+                   "SP2405"
+                   )
 
     spi.wait()

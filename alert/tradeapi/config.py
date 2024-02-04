@@ -27,8 +27,8 @@ fronts = {
 }
 
 # 投资者ID / 密码
-user = "xxx"
-password = "xxx"
+user = "221882"
+password = "mikalqlr001!"
 
 # 以下为连接 SimNow 环境的固定值
 broker_id = "9999"

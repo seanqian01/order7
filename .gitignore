@@ -6,6 +6,8 @@
 *.pyo
 conf.py
 .pyd
+config.py
+
 
 # IntelliJ project files
 .idea
