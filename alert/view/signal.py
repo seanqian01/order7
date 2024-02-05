@@ -12,9 +12,11 @@ def filter_trade_signal(alert_data):
     # 获取当前信号的scode和action
     scode = alert_data.scode
     action = alert_data.action
+    time_circle = alert_data.time_circle
 
     # 查询数据库中相同scode的之前一个信号，按照created_at倒序排列
-    previous_signal = stra_Alert.objects.filter(scode=scode, created_at__lt=alert_data.created_at).order_by(
+    previous_signal = stra_Alert.objects.filter(scode=scode, time_circle=time_circle,
+                                                created_at__lt=alert_data.created_at).order_by(
         '-created_at').first()
 
     # 如果找到之前一个信号，比较它们的action
