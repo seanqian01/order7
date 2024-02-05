@@ -30,15 +30,14 @@ fronts = {
     },
 }
 
-#simnow投资者ID / 密码
+# simnow投资者ID / 密码
 user = "221882"
-password = "mikalqlr001!"
+password = "mikalqlr009!"
 
-#以下为连接 SimNow 环境的固定值
+# 以下为连接 SimNow 环境的固定值
 broker_id = "9999"
 authcode = "0000000000000000"
 appid = "simnow_client_test"
-
 
 # # 通惠测试环境投资者ID / 密码
 # user = "08860"
