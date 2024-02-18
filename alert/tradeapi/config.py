@@ -39,11 +39,4 @@ broker_id = "9999"
 authcode = "0000000000000000"
 appid = "simnow_client_test"
 
-# # 通惠测试环境投资者ID / 密码
-# user = "08860"
-# password = "thqh1234"
-#
-# # 以下为通惠测试环境的固定值
-# broker_id = "08860"
-# authcode = "P2UAXBUJ3VPVMUBY"
-# appid = "client_vcpos_2.0"
+
