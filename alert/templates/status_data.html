@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}
+    运营数据统计--美速运营统计报表系统
+{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">运营数据统计</h1>
+    </div>
+        <div class="row col-sm-12">
+        <div class="col-sm-6">
+            <table class="table table-bordered">
+              <thead>
+                <tr class="table-active">
+                  <th scope="col">项目所处阶段</th>
+                  <th scope="col">阶段内项目数量</th>
+                  <th scope="col">阶段内项目占比</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                    <th scope="row">方案准备阶段</th>
+                  <td id="cell-doc"></td>
+                  <td id="pro_doc"></td>
+                </tr>
+                <tr>
+                    <th scope="row">系统准备阶段</th>
+                  <td id="cell-sys"></td>
+                  <td id="pro_sys"></td>
+                </tr>
+                <tr>
+                  <th scope="row">入组阶段</th>
+                  <td id="cell-in"></td>
+                    <td id="pro_in"></td>
+                </tr>
+                <tr>
+                  <th scope="row">数据审核</th>
+                    <td id="cell-data"></td>
+                    <td id="pro_data"></td>
+                </tr>
+                <tr>
+                  <th scope="row">报告阶段</th>
+                    <td id="cell-report"></td>
+                    <td id="pro_report"></td>
+                </tr>
+                <tr>
+                  <th scope="row">结题后</th>
+                    <td id="cell-after"></td>
+                    <td id="pro_after"></td>
+                </tr>
+                <tr>
+                  <th scope="row">项目关闭</th>
+                    <td id="cell-close"></td>
+                    <td id="pro_close"></td>
+                </tr>
+                <tr>
+                  <th scope="row">总计</th>
+                    <td id="cell-total"></td>
+                    <td></td>
+                </tr>
+              </tbody>
+            </table>
+        </div>
+        <div class="col-sm-6">
+            <canvas  id="myChart3" width="400" height="400"></canvas>
+        </div>
+    </div>
+
+{% endblock%}
+
+
+{% block script %}
+    <script>
+    var endpoint='/api/status/'
+    var total=[]
+    var defaultData=[]
+    var labels=[];
+    var project_doc_ready_count=[]
+    var project_sys_ready_count=[]
+    var project_in_count=[]
+    var project_data_count=[]
+    var project_report_count=[]
+    var project_after_count=[]
+    var project_close_count=[]
+
+    var pro_doc=[]
+    var pro_sys=[]
+    var pro_in=[]
+    var pro_data=[]
+    var pro_report=[]
+    var pro_after=[]
+    var pro_close=[]
+
+
+    $.ajax({
+        method:'GET',
+        url:endpoint,
+        success:function (data){
+            total=data.total
+            labels=data.labels
+            defaultData=data.default
+
+            project_doc_ready_count=data.project_doc_ready_count
+            project_sys_ready_count=data.project_sys_ready_count
+            project_in_count=data.project_in_count
+            project_data_count=data.project_data_count
+            project_report_count=data.project_report_count
+            project_after_count=data.project_after_count
+            project_close_count=data.project_close_count
+
+            pro_doc=data.pro_doc
+            pro_sys=data.pro_sys
+            pro_in=data.pro_in
+            pro_data=data.pro_data
+            pro_report=data.pro_report
+            pro_after=data.pro_after
+            pro_close=data.pro_close
+
+            get_status()
+            get_table_status()
+            console.log(data)
+        },
+        error:function (error_data){
+            console.log('error')
+            console.log(error_data)
+        }
+    })
+
+    function get_table_status(){
+        document.getElementById('cell-doc').innerText = project_doc_ready_count
+        document.getElementById('cell-sys').innerText = project_sys_ready_count
+        document.getElementById('cell-in').innerText = project_in_count
+        document.getElementById('cell-data').innerText = project_data_count
+        document.getElementById('cell-report').innerText = project_report_count
+        document.getElementById('cell-after').innerText = project_after_count
+        document.getElementById('cell-close').innerText = project_close_count
+        document.getElementById('cell-total').innerText = total
+
+        document.getElementById('pro_doc').innerText = pro_doc+'%'
+        document.getElementById('pro_sys').innerText = pro_sys+'%'
+        document.getElementById('pro_in').innerText = pro_in+'%'
+        document.getElementById('pro_data').innerText = pro_data+'%'
+        document.getElementById('pro_report').innerText = pro_report+'%'
+        document.getElementById('pro_after').innerText = pro_after+'%'
+        document.getElementById('pro_close').innerText = pro_close+'%'
+
+    }
+
+    function get_status(){
+        const ctx3 = document.getElementById('myChart3');
+        var chart = new Chart(ctx3, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '当前状态项目数量',
+            data: defaultData,
+             backgroundColor: [
+                'rgba(255, 99, 132, 0.7)',
+                'rgba(54, 162, 235, 0.7)',
+                'rgba(255, 205, 86, 0.7)',
+                'rgba(75, 192, 192, 0.7)',
+                 'rgba(244, 164, 96, 0.7)',
+                 'rgba(148, 0, 211, 0.7)',
+                 'rgba(202, 225, 255, 0.7)',
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          plugins:{
+              title:{
+                  display:true,
+                  text:"当前项目状态统计"
+              },
+              legend: {
+                display: false
+              },
+          },
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+
+    // 当前页面路径
+    var current = location.pathname;
+
+    $(function() {
+      // 导航栏切换
+      $('.nav-item a').each(function(){
+        var $this = $(this);
+        if($this.attr('href') === current){
+          $this.addClass('active');
+        }
+      })
+    });
+
+</script>
+
+{% endblock %}

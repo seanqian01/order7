@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}
+    新建任务模板--美速运营统计报表系统
+{% endblock %}
+
+{% block content %}
+      <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">新建任务模板</h1>
+      </div>
+    <div>
+        <form action="{% url 'add_template' %}" method="post">`
+            {% csrf_token %}
+                <div class="col-2">
+                    <label for="validationCustom04">任务所在阶段</label>
+                      <select class="custom-select" id="trackers" name="tracker" required>
+                      </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-2">
+                      <label for="templateType">任务类型</label>
+                      <select class="custom-select" id="templateType" name="template_type">
+                          <option value="" {% if not template_type %}selected{% endif %}>选择任务类型...</option>
+                          <option value="1" {% if template_type == "1" %}selected{% endif %}>一级任务</option>
+                          <option value="2" {% if template_type == "2" %}selected{% endif %}>二级任务</option>
+                      </select>
+                    </div>
+                    <div class="form-group col-2" id="issueGroupDiv" style="display: none;">
+                      <label for="issueGroup">任务组别</label>
+                      <select class="custom-select" id="issueGroupSelect" name="issue_group">
+                          <option value="" {% if not issue_group %}selected{% endif %}>选择任务组别...</option>
+                          <option value="1" {% if issue_group == "1" %}selected{% endif %}>商务组</option>
+                          <option value="2" {% if issue_group == "2" %}selected{% endif %}>DM组</option>
+                          <option value="3" {% if issue_group == "3" %}selected{% endif %}>统计分析组</option>
+                          <option value="4" {% if issue_group == "4" %}selected{% endif %}>编程组</option>
+                          <option value="5" {% if issue_group == "5" %}selected{% endif %}>行政管理人员</option>
+
+                      </select>
+                  </div>
+                </div>
+                <div class="form-group col-6">
+                    <label for="inputissuename">任务名称</label>
+                    <input type="text" class="form-control" name='name' placeholder="请输入任务名称">
+                </div>
+        <div class="form-row">
+            <div class="form-group col-3">
+                    <label for="inputissuesid">派发任务人员用户名</label>
+                    <input type="text" class="form-control" name="creator">
+            </div>
+            <div class="form-group col-3">
+                    <label for="inputissuesid">任务申领人员用户名</label>
+                    <input type="text" class="form-control" name="assignee">
+            </div>
+        </div>
+            <div>
+                <button type="submit" class="btn btn-primary" >保存任务模板</button>
+            </div>
+
+    </form>
+    </div>
+{% endblock %}
+
+{% block script %}
+    <script>
+    $.get('/load_trackers/', function(data) {
+      var options = data.trackers.map(t => `<option>${t}</option>`);
+      $('#trackers').html(options);
+    });
+
+    // 任务类型的 change 事件处理
+    $('#templateType').change(function() {
+        var templateType = $(this).val();
+        var issueGroupDiv = $('#issueGroupDiv');
+        var issueGroupSelect = $('#issueGroup');
+
+        // 如果是二级任务，显示任务组别选择
+        if (templateType === '2') {
+            issueGroupDiv.show();
+        } else {
+            // 如果不是二级任务，隐藏任务组别选择并清除已选择的值
+            issueGroupDiv.hide();
+            issueGroupSelect.val(''); // 清除选择的值，确保不会发送到后端
+        }
+    });
+
+    // 触发 change 事件以设置初始状态
+    $('#templateType').change();
+
+
+    $(document).ready(function() {
+        $.get('/load_trackers/', function(data) {
+            var options = data.trackers.map(function(t) {
+                return `<option value="${t}" ${t === '{{ tracker }}' ? 'selected' : ''}>${t}</option>`;
+            });
+            $('#trackers').html(options.join(''));
+            $('#templateType').change(); // 触发任务类型的 change 事件
+        });
+    });
+
+
+  </script>
+{% endblock %}
+
+

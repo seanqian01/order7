@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}
+    MesureData--美速运营统计报表系统
+{% endblock %}
+
+{% block content %}
+     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">综合数据统计</h1>
+      </div>
+    <div class="row col-sm-12">
+        <div class="col-sm-6">
+            <table class="table table-bordered" align="right">
+              <thead>
+                <tr class="table-active">
+                  <th scope="col">分类</th>
+                  <th scope="col">项目数量</th>
+                  <th scope="col">项目占比</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                    <th scope="row">I期</th>
+                  <td id="cell-1"></td>
+                  <td id="cell-pro-total-1"></td>
+                </tr>
+                <tr>
+                    <th scope="row">II/III期/器械</th>
+                  <td id="cell-234"></td>
+                  <td id="cell-pro-total-234"></td>
+                </tr>
+                <tr>
+                  <th scope="row">BE</th>
+                  <td id="cell-BE"></td>
+                    <td id="cell-pro-total-BE"></td>
+                </tr>
+                <tr>
+                  <th scope="row">其他非注册研究</th>
+                    <td id="cell-others"></td>
+                    <td id="cell-pro-total-others"></td>
+                </tr>
+                <tr>
+                  <th scope="row">总计</th>
+                    <td id="cell-total"></td>
+                    <td></td>
+                </tr>
+              </tbody>
+            </table>
+        </div>
+        <div class="col-sm-6">
+            <canvas  id="myChart" width="400" height="400"></canvas>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block script %}
+    <script>
+    var endpoint='/api/'
+    var defaultData=[]
+    var labels=[];
+    var total=[]
+    var total_BE=[]
+    var pro_total_BE=[]
+    var total_1=[]
+    var pro_total_1=[]
+    var total_234=[]
+    var pro_total234=[]
+    var total_others=[]
+    var pro_total_others=[]
+
+
+    $.ajax({
+        method:'GET',
+        url:endpoint,
+        success:function (data){
+            labels=data.labels
+            defaultData=data.default
+            total=data.total
+            total_BE=data.total_BE
+            pro_total_BE=data.pro_total_BE
+            total_1=data.total_1
+            pro_total_1=data.pro_total_1
+            total_234=data.total_234
+            pro_total234=data.pro_total234
+            total_others=data.total_others
+            pro_total_others=data.pro_total_others
+            get_data()
+            get_table_data()
+            console.log(data)
+        },
+        error:function (error_data){
+            console.log('error')
+            console.log(error_data)
+        }
+    })
+
+    function get_table_data(){
+        // 更新 id 为 cell-1 的单元格
+        document.getElementById('cell-1').innerText = total_1
+        document.getElementById('cell-234').innerText = total_234
+        document.getElementById('cell-BE').innerText = total_BE
+        document.getElementById('cell-others').innerText = total_others
+
+        document.getElementById('cell-pro-total-1').innerText = pro_total_1+'%'
+        document.getElementById('cell-pro-total-234').innerText = pro_total234+'%'
+        document.getElementById('cell-pro-total-others').innerText = pro_total_others+'%'
+        document.getElementById('cell-pro-total-BE').innerText = pro_total_BE+'%'
+
+
+        document.getElementById('cell-total').innerText = total
+    }
+
+    function get_data(){
+        //下面是charts图表数据的加载
+        const ctx = document.getElementById('myChart');
+        var chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '当前类型项目数量',
+            data: defaultData,
+             backgroundColor: [
+              'rgba(255, 99, 132, 0.7)',
+              'rgba(54, 162, 235, 0.7)',
+              'rgba(255, 205, 86, 0.7)',
+              'rgba(75, 192, 192, 0.7)',
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          plugins:{
+              title:{
+                  display:true,
+                  text:"项目综合数量统计"
+              },
+              legend: {
+                display: false
+              },
+          },
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+
+
+    }
+
+// 当前页面路径
+    var current = location.pathname;
+
+    $(function() {
+      // 导航栏切换
+      $('.nav-item a').each(function(){
+        var $this = $(this);
+        if($this.attr('href') === current){
+          $this.addClass('active');
+        }
+      })
+    });
+
+    </script>
+
+{% endblock %}
