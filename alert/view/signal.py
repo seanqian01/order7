@@ -70,6 +70,15 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 # 调用过滤函数
                 response = filter_trade_signal(trading_view_alert_data)
 
+                # 根据 HTTP 状态码判断信号有效性
+                if response.status_code == status.HTTP_200_OK:
+                    # 信号有效，执行下单函数
+                    # place_order_function()
+                    pass
+                else:
+                    # 信号无效，不执行任何操作，可以添加适当的日志记录或其他处理
+                    pass
+
                 return HttpResponse(response.data['message'], status=response.status_code)
 
             else:
