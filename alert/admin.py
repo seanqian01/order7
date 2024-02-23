@@ -2,6 +2,8 @@ from django.contrib import admin
 from alert.models import stra_Alert, Strategy, Merchant, User
 from django.contrib.auth.admin import UserAdmin
 import logging
+from import_export.admin import ImportExportModelAdmin, ExportActionModelAdmin
+from import_export import resources, fields
 
 logger = logging.getLogger(__name__)
 
@@ -9,9 +11,22 @@ admin.site.site_header = "sean_量化交易管理系统"
 admin.site.site_title = "量化交易管理系统--sean"
 
 
+class stra_AlertResource(resources.ModelResource):
+    price = fields.Field(attribute='price', column_name='价格')
+    alert_title = fields.Field(attribute='alert_title', column_name='信号描述')
+    contractType = fields.Field(attribute='contractType', column_name='交易合约类型')
+
+    class Meta:
+        model = stra_Alert
+        fields = (
+            'alert_title', 'symbol', 'scode', 'contractType', 'price', 'action', 'status', 'created_at', 'time_circle')
+        export_order = (
+            'alert_title', 'symbol', 'scode', 'contractType', 'price', 'action', 'status', 'created_at', 'time_circle')
+
+
 # @admin.register(stra_Alert)
-class AlertAdmin(admin.ModelAdmin):
-    ordering = ('-created_at',)
+class AlertAdmin(ImportExportModelAdmin, ExportActionModelAdmin):
+    resource_class = stra_AlertResource
     list_display = ['alert_title',
                     'time_circle',
                     'symbol',
@@ -23,7 +38,23 @@ class AlertAdmin(admin.ModelAdmin):
                     'created_at',
                     ]
     list_filter = ('created_at', 'time_circle', 'scode', 'contractType', 'action')
+    search_fields = ['scode', 'price']
     list_per_page = 30
+    ordering = ('-created_at',)
+    actions = ['export_selected']
+
+    # def export_selected(self, request, queryset):
+    #     # 导出选中的结果到Excel
+    #     from import_export.admin import ExportActionModelAdmin
+    #
+    #     exporter = ExportActionModelAdmin()
+    #     return exporter.export_excel_action(modeladmin=self, request=request, queryset=queryset)
+
+    def export_selected(self, request, queryset):
+        # 导出选中的结果到Excel
+        return self.export_action(modeladmin=self, request=request, queryset=queryset)
+
+    export_selected.short_description = "导出选中项到Excel"
 
     class Media:
         def __init__(self):

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'alert',
     'rest_framework_simplejwt',
+    'import_export',
 ]
 
 MIDDLEWARE = [
