@@ -1,5 +1,6 @@
 from django.urls import path
 from rest_framework.authtoken import views
+
 from alert.view import signal, stra_view, merchant, user
 from alert.web import page
 
@@ -17,6 +18,7 @@ urlpatterns = [
 
     #前端页面功能
     path('', page.index, name='index'),
+
 ]
 
 
