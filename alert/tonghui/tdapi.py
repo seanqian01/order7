@@ -585,11 +585,31 @@ if __name__ == "__main__":
     while True:
         time.sleep(1)
         if spi.is_login:
-            spi.limit_order_insert("CZCE", "m2409", 3285, 1)
-            spi.qry_exchange("DCE")
-            # spi.order_cancel1("CZCE", "m2405", 3001, 1)
+            # 投资者结算结果确认
             # spi.settlement_info_confirm()
-            # spi.market_order_insert("CZCE", "m2405", 3000, 1)
+
+            # 请求查询合约
+            # spi.qry_instrument("DCE")
+            # spi.qry_instrument(exchange_id="CZCE")
+            # spi.qry_instrument(product_id="i")
+            # spi.qry_instrument(instrument_id="fu2409")
+
+            # 请求查询合约手续费
+            # spi.qry_instrument_commission_rate("fu2409")
+            # 请求查询合约保证金率
+            # spi.qry_instrument_margin_rate(instrument_id="fu2409")
+            # spi.qry_depth_market_data()
+
+            # 请求查询行情
+            spi.qry_depth_market_data(instrument_id="fu2409")
+            # spi.market_order_insert("CZCE", "CF411")
+            # spi.limit_order_insert("CZCE", "CF411", 15000)
+            # spi.order_cancel1("CZCE", "CF411", "        4858")
+            # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
+            # spi.qry_trading_code("CZCE")
+            # spi.qry_exchange("DCE")
+            # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
+            # spi.qry_order_comm_rate("ss2407")
             break
 
     # 代码中的请求参数编写时测试通过, 不保证以后一定成功。
