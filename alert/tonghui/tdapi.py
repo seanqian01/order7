@@ -607,7 +607,9 @@ if __name__ == "__main__":
             # spi.market_order_insert("CZCE", "RM411")
             # spi.limit_order_insert("CZCE", "RM411", 2590, 1)
             # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
-            # spi.order_cancel1("CZCE", "RM411", "        2590")
+
+            # 订单撤单需要带上原始订单号
+            # spi.order_cancel1("CZCE", "RM411", "2024041100000059")
             # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
 
             # 请求查询交易编码
