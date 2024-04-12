@@ -110,8 +110,8 @@ if __name__ == "__main__":
     spi = CMdSpiImpl(conf.fronts["通惠测试"]["md"])
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
-    instruments = ("rb2405",
-                   "fu2405",
-                   "sp2405"
+    instruments = ("rb2409",
+                   "fu2409",
+                   "sp2409"
                    )
     spi.wait()

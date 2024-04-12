@@ -3,7 +3,7 @@ from django.contrib import admin
 from alert.models import stra_Alert, Strategy, Merchant, User, TimeCycle
 from django.contrib.auth.admin import UserAdmin
 import logging
-from import_export.admin import ImportExportModelAdmin, ExportActionModelAdmin
+from import_export.admin import ImportExportModelAdmin
 from import_export import resources, fields, widgets
 
 logger = logging.getLogger(__name__)

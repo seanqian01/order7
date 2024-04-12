@@ -585,7 +585,7 @@ if __name__ == "__main__":
     while True:
         time.sleep(1)
         if spi.is_login:
-            # spi.limit_order_insert("CZCE", "m2405", 3000, 1)
+            spi.limit_order_insert("CZCE", "m2409", 3285, 1)
             spi.qry_exchange("DCE")
             # spi.order_cancel1("CZCE", "m2405", 3001, 1)
             # spi.settlement_info_confirm()
