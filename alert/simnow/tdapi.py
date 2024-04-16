@@ -384,7 +384,7 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         _req.LimitPrice = price  # 价格
         _req.OrderPriceType = tdapi.THOST_FTDC_OPT_LimitPrice  # 价格类型限价单
         _req.Direction =tdapi.THOST_FTDC_D_Sell
-        _req.CombOffsetFlag =tdapi.THOST_FTDC_OF_Open
+        _req.CombOffsetFlag =tdapi.THOST_FTDC_OF_CloseToday
         # _req.Direction = tdapi.THOST_FTDC_D_Buy  # 买
         # _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_Open  # 开仓
         _req.CombHedgeFlag = tdapi.THOST_FTDC_HF_Speculation
@@ -565,6 +565,45 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         """查询申报费率应答"""
         self._check_rsp(pRspInfo, pInstrumentOrderCommRate, bIsLast)
 
+
+    def qry_investor_position(self, instrument_id: str = ""):
+        """查询投资者持仓"""
+        print("> 请求查询投资者持仓")
+        req = tdapi.CThostFtdcQryInvestorPositionField()
+        req.BrokerID = self._broker_id
+        req.InvestorID = self._user
+        req.InstrumentID = instrument_id  # 可指定合约
+        self._check_req(req, self._api.ReqQryInvestorPosition(req, 0))
+
+    def OnRspQryInvestorPosition(
+        self,
+        pInvestorPosition: tdapi.CThostFtdcInvestorPositionField,
+        pRspInfo: tdapi.CThostFtdcRspInfoField,
+        nRequestID: int,
+        bIsLast: bool,
+    ):
+        """查询投资者持仓响应"""
+        self._check_rsp(pRspInfo, pInvestorPosition, bIsLast)
+
+    def qry_investor_position_detail(self, instrument_id: str = ""):
+        """查询投资者持仓"""
+        print("> 请求查询投资者持仓明细")
+        req = tdapi.CThostFtdcQryInvestorPositionDetailField()
+        req.BrokerID = self._broker_id
+        req.InvestorID = self._user
+        req.InstrumentID = instrument_id  # 可指定合约
+        self._check_req(req, self._api.ReqQryInvestorPositionDetail(req, 0))
+
+    def OnRspQryInvestorPositionDetail(
+        self,
+        pInvestorPositionDetail: tdapi.CThostFtdcInvestorPositionDetailField,
+        pRspInfo: tdapi.CThostFtdcRspInfoField,
+        nRequestID: int,
+        bIsLast: bool,
+    ):
+        """查询投资者持仓明细响应"""
+        self._check_rsp(pRspInfo, pInvestorPositionDetail, bIsLast)
+
     def wait(self):
         # 阻塞 等待
         self._wait_queue.get()
@@ -613,7 +652,7 @@ if __name__ == "__main__":
             # spi.market_order_insert("CZCE", "RM411")
 
             #限价单
-            spi.limit_order_insert("SHFE", "fu2409", 3605, 1)
+            # spi.limit_order_insert("SHFE", "fu2409", 3605, 1)
             # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
             # 订单撤单需要带上原始订单号
@@ -625,6 +664,12 @@ if __name__ == "__main__":
 
             # 查询交易所
             # spi.qry_exchange("DCE")
+
+            # 查询交易者持仓
+            # spi.qry_investor_position()
+
+            # 查询交易者持仓明细
+            # spi.qry_investor_position_detail("jd2409")
 
             # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
             # spi.qry_order_comm_rate("ss2407")
