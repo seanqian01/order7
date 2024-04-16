@@ -563,6 +563,44 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         """查询申报费率应答"""
         self._check_rsp(pRspInfo, pInstrumentOrderCommRate, bIsLast)
 
+    def qry_investor_position(self, instrument_id: str = ""):
+        """查询投资者持仓"""
+        print("> 请求查询投资者持仓")
+        req = tdapi.CThostFtdcQryInvestorPositionField()
+        req.BrokerID = self._broker_id
+        req.InvestorID = self._user
+        req.InstrumentID = instrument_id  # 可指定合约
+        self._check_req(req, self._api.ReqQryInvestorPosition(req, 0))
+
+    def OnRspQryInvestorPosition(
+        self,
+        pInvestorPosition: tdapi.CThostFtdcInvestorPositionField,
+        pRspInfo: tdapi.CThostFtdcRspInfoField,
+        nRequestID: int,
+        bIsLast: bool,
+    ):
+        """查询投资者持仓响应"""
+        self._check_rsp(pRspInfo, pInvestorPosition, bIsLast)
+
+    def qry_investor_position_detail(self, instrument_id: str = ""):
+        """查询投资者持仓"""
+        print("> 请求查询投资者持仓明细")
+        req = tdapi.CThostFtdcQryInvestorPositionDetailField()
+        req.BrokerID = self._broker_id
+        req.InvestorID = self._user
+        req.InstrumentID = instrument_id  # 可指定合约
+        self._check_req(req, self._api.ReqQryInvestorPositionDetail(req, 0))
+
+    def OnRspQryInvestorPositionDetail(
+        self,
+        pInvestorPositionDetail: tdapi.CThostFtdcInvestorPositionDetailField,
+        pRspInfo: tdapi.CThostFtdcRspInfoField,
+        nRequestID: int,
+        bIsLast: bool,
+    ):
+        """查询投资者持仓明细响应"""
+        self._check_rsp(pRspInfo, pInvestorPositionDetail, bIsLast)
+
     def wait(self):
         # 阻塞 等待
         self._wait_queue.get()
