@@ -585,6 +585,8 @@ if __name__ == "__main__":
     while True:
         time.sleep(1)
         if spi.is_login:
+            # SHFE:上期所 | DCE:大商所  |CZCE:郑商所 | CFFEX:中金所 | INE:能源中心
+
             # 投资者结算结果确认
             # spi.settlement_info_confirm()
 

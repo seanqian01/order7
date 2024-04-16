@@ -383,8 +383,10 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         _req.InstrumentID = instrument_id  # 合约ID
         _req.LimitPrice = price  # 价格
         _req.OrderPriceType = tdapi.THOST_FTDC_OPT_LimitPrice  # 价格类型限价单
-        _req.Direction = tdapi.THOST_FTDC_D_Buy  # 买
-        _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_Open  # 开仓
+        _req.Direction =tdapi.THOST_FTDC_D_Sell
+        _req.CombOffsetFlag =tdapi.THOST_FTDC_OF_Open
+        # _req.Direction = tdapi.THOST_FTDC_D_Buy  # 买
+        # _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_Open  # 开仓
         _req.CombHedgeFlag = tdapi.THOST_FTDC_HF_Speculation
         _req.VolumeTotalOriginal = volume
         _req.IsAutoSuspend = 0
@@ -585,12 +587,47 @@ if __name__ == "__main__":
     while True:
         time.sleep(1)
         if spi.is_login:
-            # spi.limit_order_insert("CZCE", "m2405", 3000, 1)
-            # spi.qry_exchange("DCE")
-            # spi.limit_order_insert("DCE", "m2405", 3000, 1)
-            # spi.order_cancel1("CZCE", "m2405", 3001, 1)
+            # 投资者结算结果确认
             # spi.settlement_info_confirm()
-            # spi.market_order_insert("CZCE", "m2405", 3000, 1)
+
+            # SHFE:上期所 | DCE:大商所  |CZCE:郑商所 | CFFEX:中金所 | INE:能源中心
+
+            # 请求查询合约
+            # spi.qry_instrument("CZCE")
+            # spi.qry_instrument(exchange_id="CZCE")
+            # spi.qry_instrument(product_id="i")
+            # spi.qry_instrument(instrument_id="CF411")
+
+            # 请求查询合约手续费
+            # spi.qry_instrument_commission_rate("fu2409")
+
+            # 请求查询合约保证金率
+            # spi.qry_instrument_margin_rate(instrument_id="fu2409")
+            # spi.qry_depth_market_data()
+
+            # 请求查询行情
+            # spi.qry_depth_market_data(instrument_id="CF411")
+
+
+            #市价单
+            # spi.market_order_insert("CZCE", "RM411")
+
+            #限价单
+            spi.limit_order_insert("SHFE", "fu2409", 3605, 1)
+            # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
+
+            # 订单撤单需要带上原始订单号
+            # spi.order_cancel1("CZCE", "RM411", "2024041100000059")
+            # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
+
+            # 请求查询交易编码
+            # spi.qry_trading_code("CZCE")
+
+            # 查询交易所
+            # spi.qry_exchange("DCE")
+
+            # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
+            # spi.qry_order_comm_rate("ss2407")
             break
 
     # 代码中的请求参数编写时测试通过, 不保证以后一定成功。
