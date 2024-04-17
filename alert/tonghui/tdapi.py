@@ -645,11 +645,11 @@ if __name__ == "__main__":
             # spi.qry_depth_market_data(instrument_id="CF411")
 
             # spi.market_order_insert("CZCE", "RM411")
-            # spi.limit_order_insert("CZCE", "RM411", 2590, 1)
+            spi.limit_order_insert("CZCE", "RM411", 2580, 2)
             # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
             # 订单撤单需要带上原始订单号
-            # spi.order_cancel1("CZCE", "RM411", "2024041100000059")
+            # spi.order_cancel1("CZCE", "RM411", "2024041100000004")
             # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
 
             # 请求查询交易编码
@@ -657,6 +657,12 @@ if __name__ == "__main__":
 
             # 查询交易所
             # spi.qry_exchange("DCE")
+
+            # 查询交易者持仓
+            # spi.qry_investor_position()
+
+            # 查询交易者持仓明细
+            # spi.qry_investor_position_detail("jd2409")
 
             # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
             # spi.qry_order_comm_rate("ss2407")
