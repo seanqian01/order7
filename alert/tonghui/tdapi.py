@@ -642,14 +642,14 @@ if __name__ == "__main__":
             # spi.qry_depth_market_data()
 
             # 请求查询行情
-            # spi.qry_depth_market_data(instrument_id="CF411")
+            # spi.qry_depth_market_data(instrument_id="RM411")
 
-            # spi.market_order_insert("CZCE", "RM411")
-            spi.limit_order_insert("CZCE", "RM411", 2580, 2)
+            # spi.market_order_insert("CZCE", "RM411",2)
+            # spi.limit_order_insert("CZCE", "RM409", 2720, 50)
             # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
             # 订单撤单需要带上原始订单号
-            # spi.order_cancel1("CZCE", "RM411", "2024041100000004")
+            # spi.order_cancel1("CZCE", "RM411", "2024041100000006")
             # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
 
             # 请求查询交易编码
