@@ -8,7 +8,7 @@ import sys
 
 from openctp_ctp import tdapi
 
-import conf
+import config
 
 
 class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
@@ -611,12 +611,12 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
 
 if __name__ == "__main__":
     spi = CTdSpiImpl(
-        conf.fronts["通惠测试"]["td"],
-        conf.user,
-        conf.password,
-        conf.authcode,
-        conf.appid,
-        conf.broker_id,
+        config.fronts["通惠测试"]["td"],
+        config.user,
+        config.password,
+        config.authcode,
+        config.appid,
+        config.broker_id,
     )
 
     # 等待登录成功
