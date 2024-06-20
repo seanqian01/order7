@@ -563,6 +563,44 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         """查询申报费率应答"""
         self._check_rsp(pRspInfo, pInstrumentOrderCommRate, bIsLast)
 
+    def qry_investor_position(self, instrument_id: str = ""):
+        """查询投资者持仓"""
+        print("> 请求查询投资者持仓")
+        req = tdapi.CThostFtdcQryInvestorPositionField()
+        req.BrokerID = self._broker_id
+        req.InvestorID = self._user
+        req.InstrumentID = instrument_id  # 可指定合约
+        self._check_req(req, self._api.ReqQryInvestorPosition(req, 0))
+
+    def OnRspQryInvestorPosition(
+        self,
+        pInvestorPosition: tdapi.CThostFtdcInvestorPositionField,
+        pRspInfo: tdapi.CThostFtdcRspInfoField,
+        nRequestID: int,
+        bIsLast: bool,
+    ):
+        """查询投资者持仓响应"""
+        self._check_rsp(pRspInfo, pInvestorPosition, bIsLast)
+
+    def qry_investor_position_detail(self, instrument_id: str = ""):
+        """查询投资者持仓"""
+        print("> 请求查询投资者持仓明细")
+        req = tdapi.CThostFtdcQryInvestorPositionDetailField()
+        req.BrokerID = self._broker_id
+        req.InvestorID = self._user
+        req.InstrumentID = instrument_id  # 可指定合约
+        self._check_req(req, self._api.ReqQryInvestorPositionDetail(req, 0))
+
+    def OnRspQryInvestorPositionDetail(
+        self,
+        pInvestorPositionDetail: tdapi.CThostFtdcInvestorPositionDetailField,
+        pRspInfo: tdapi.CThostFtdcRspInfoField,
+        nRequestID: int,
+        bIsLast: bool,
+    ):
+        """查询投资者持仓明细响应"""
+        self._check_rsp(pRspInfo, pInvestorPositionDetail, bIsLast)
+
     def wait(self):
         # 阻塞 等待
         self._wait_queue.get()
@@ -585,15 +623,55 @@ if __name__ == "__main__":
     while True:
         time.sleep(1)
         if spi.is_login:
-            # spi.limit_order_insert("CZCE", "m2405", 3000, 1)
-            spi.qry_exchange("DCE")
-            # spi.order_cancel1("CZCE", "m2405", 3001, 1)
+            # SHFE:上期所 | DCE:大商所  |CZCE:郑商所 | CFFEX:中金所 | INE:能源中心
+
+            # 投资者结算结果确认
             # spi.settlement_info_confirm()
-            # spi.market_order_insert("CZCE", "m2405", 3000, 1)
+
+            # 请求查询合约
+            # spi.qry_instrument("DCE")
+            # spi.qry_instrument(exchange_id="CZCE")
+            # spi.qry_instrument(product_id="i")
+            # spi.qry_instrument(instrument_id="CF411")
+
+            # 请求查询合约手续费
+            # spi.qry_instrument_commission_rate("fu2409")
+
+            # 请求查询合约保证金率
+            # spi.qry_instrument_margin_rate(instrument_id="fu2409")
+            # spi.qry_depth_market_data()
+
+            # 请求查询行情
+            # spi.qry_depth_market_data(instrument_id="RM411")
+
+            # spi.market_order_insert("CZCE", "RM411",2)
+            # spi.limit_order_insert("CZCE", "RM409", 2720, 50)
+            # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
+
+            # 订单撤单需要带上原始订单号
+            # spi.order_cancel1("CZCE", "RM411", "2024041100000006")
+            # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
+
+            # 请求查询交易编码
+            # spi.qry_trading_code("CZCE")
+
+            # 查询交易所
+            # spi.qry_exchange("DCE")
+
+            # 查询交易者持仓
+            # spi.qry_investor_position()
+
+            # 查询交易者持仓明细
+            # spi.qry_investor_position_detail("jd2409")
+
+            # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
+            # spi.qry_order_comm_rate("ss2407")
             break
 
     # 代码中的请求参数编写时测试通过, 不保证以后一定成功。
     # 需要测试哪个请求, 取消下面对应的注释, 并按需修改参请求参数即可。
+
+    # spi.limit_order_insert("CZCE", "CF411", 12000, 1)
 
     # spi.settlement_info_confirm()
     # spi.qry_instrument()
