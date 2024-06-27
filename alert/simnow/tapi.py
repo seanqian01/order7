@@ -611,7 +611,7 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
 
 if __name__ == "__main__":
     spi = CTdSpiImpl(
-        config.fronts["通惠测试"]["td"],
+        config.fronts["电信1"]["td"],
         config.user,
         config.password,
         config.authcode,
@@ -632,7 +632,7 @@ if __name__ == "__main__":
             # spi.qry_instrument("DCE")
             # spi.qry_instrument(exchange_id="CZCE")
             # spi.qry_instrument(product_id="i")
-            # spi.qry_instrument(instrument_id="CF411")
+            spi.qry_instrument(instrument_id="RU2501")
 
             # 请求查询合约手续费
             # spi.qry_instrument_commission_rate("fu2409")

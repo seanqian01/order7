@@ -79,9 +79,16 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
             if "LowerLimitPrice" in param:
                 LowerLimitPrice_value = param.split("=")[1]
                 break
+        #提取LastPrice 字段的值
+        LastPrice_value = None
+        for param in params:
+            if "LastPrice" in param:
+                LastPrice_value = param.split("=")[1]
+                break
 
         # 打印 LowerLimitPrice 字段的值
         print("LowerLimitPrice 值:", LowerLimitPrice_value)
+        print("LastPrice 值:", LastPrice_value)
 
     def OnRspSubMarketData(
             self,
@@ -110,8 +117,6 @@ if __name__ == "__main__":
     spi = CMdSpiImpl(config.fronts["电信1"]["md"])
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
-    instruments = ("rb2410",
-                   "fu2410",
-                   "sp2410"
+    instruments = ("ru2501",
                    )
     spi.wait()
