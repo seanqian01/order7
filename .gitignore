@@ -7,7 +7,6 @@
 conf.py
 .pyd
 *config.py
-*.con
 
 
 # IntelliJ project files
