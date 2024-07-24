@@ -7,8 +7,8 @@ from import_export import resources, fields
 
 logger = logging.getLogger(__name__)
 
-admin.site.site_header = "sean_量化交易管理系统"
-admin.site.site_title = "量化交易管理系统--sean"
+admin.site.site_header = "vcpos_量化交易管理系统"
+admin.site.site_title = "量化交易管理系统--vcpos"
 
 
 class stra_AlertResource(resources.ModelResource):
