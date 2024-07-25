@@ -8,6 +8,7 @@ conf.py
 .pyd
 *config.py
 *.con
+channel_config.py
 
 
 # IntelliJ project files
