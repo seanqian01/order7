@@ -4,6 +4,7 @@ from django.contrib.auth.admin import UserAdmin
 import logging
 from import_export.admin import ImportExportModelAdmin, ExportActionModelAdmin
 from import_export import resources, fields
+from django.contrib.admin.models import LogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,13 @@ class MyUserAdmin(UserAdmin):
         def __init__(self):
             pass
 
+
+#用户日志
+@admin.register(LogEntry)
+class LogEntryAdmin(admin.ModelAdmin):
+    list_display = ['action_time', 'user', 'content_type', 'object_repr', 'action_flag', 'change_message']
+    search_fields = ['user__username', 'object_repr', 'change_message']
+    list_filter = ['action_time', 'user', 'content_type', 'action_flag']
 
 admin.site.register(Strategy, StrategyAdmin)
 
