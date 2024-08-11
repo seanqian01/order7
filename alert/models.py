@@ -62,8 +62,13 @@ class stra_Alert(models.Model):
 class stra_Order(models.Model):
     exchange = models.CharField(max_length=50, verbose_name="交易所")
     symbol = models.CharField(max_length=50, verbose_name="交易对")
-    type = models.CharField(max_length=50, verbose_name="订单类型")
-    
+    ORDER_TYPE_CHOICES = [
+        ('limit', "限价单"),
+        ('market', "市价单"),
+        ('stop_loss', "止损单"),
+        # 可以根据需求添加更多类型
+    ]
+    type = models.CharField(max_length=50, choices=ORDER_TYPE_CHOICES, verbose_name="订单类型")    
     SIDE_CHOICES = [
         ('buy', "买入"),
         ('sell', "卖出"),
@@ -73,7 +78,7 @@ class stra_Order(models.Model):
     price = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="价格")
     filled = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="已成交数量")
     remaining = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="剩余数量")
-    
+
     ORDER_STATUS_CHOICES = [
         ('pending', "待处理"),
         ('partially_filled', "部分成交"),
