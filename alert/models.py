@@ -63,13 +63,33 @@ class stra_Order(models.Model):
     exchange = models.CharField(max_length=50, verbose_name="交易所")
     symbol = models.CharField(max_length=50, verbose_name="交易对")
     type = models.CharField(max_length=50, verbose_name="订单类型")
-    side = models.CharField(max_length=50, verbose_name="买卖方向")
+    
+    SIDE_CHOICES = [
+        ('buy', "买入"),
+        ('sell', "卖出"),
+    ]
+    side = models.CharField(max_length=50, choices=SIDE_CHOICES, verbose_name="买卖方向")
     amount = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="交易数量")
     price = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="价格")
     filled = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="已成交数量")
     remaining = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="剩余数量")
-    status = models.CharField(max_length=50, verbose_name="订单状态")
+    
+    ORDER_STATUS_CHOICES = [
+        ('pending', "待处理"),
+        ('partially_filled', "部分成交"),
+        ('filled', "完全成交"),
+        ('cancelled', "已取消"),
+        ('failed', "失败"),
+    ]
+    status = models.CharField(max_length=50, choices=ORDER_STATUS_CHOICES, verbose_name="订单状态")
+
     timestamp = models.DateTimeField(verbose_name="订单时间")
+    POSITION_ACTION_CHOICES = [
+        (1, "开仓"),
+        (0, "平仓"),
+    ]
+    position_action = models.CharField(max_length=50, choices=POSITION_ACTION_CHOICES, verbose_name="开仓/平仓")
+    order_id = models.CharField(max_length=100, unique=True, verbose_name="订单ID")
 
     class Meta:
         db_table = 'stra_order'
