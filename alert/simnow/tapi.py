@@ -367,6 +367,9 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
             instrument_id: str,
             price: float,
             volume: int = 1,
+            direction: str='buy',
+            offset_flag: str='open',
+            close_today:bool =True,
     ):
         """报单录入请求(限价单)
 
@@ -383,8 +386,28 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         _req.InstrumentID = instrument_id  # 合约ID
         _req.LimitPrice = price  # 价格
         _req.OrderPriceType = tdapi.THOST_FTDC_OPT_LimitPrice  # 价格类型限价单
-        _req.Direction = tdapi.THOST_FTDC_D_Buy  # 买
-        _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_Open  # 开仓
+
+        # 定义买卖方向
+        if direction.lower() == 'buy':
+            _req.Direction = tdapi.THOST_FTDC_D_Buy  # 买
+        elif direction.lower() == 'sell':
+            _req.Direction = tdapi.THOST_FTDC_D_Sell  # 卖
+        else:
+            raise ValueError("Invalid direction value, must be 'buy' or 'sell'")
+
+        # 定义开仓和平仓
+        if offset_flag.lower() == 'open':
+            _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_Open  # 开仓
+        elif offset_flag.lower() == 'close':
+            if close_today:
+                _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_CloseToday  # 平今
+            else:
+                _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_CloseYesterday  # 平昨
+        else:
+            raise ValueError("Invalid offset_flag value, must be 'open' or 'close'")
+
+        # _req.Direction = tdapi.THOST_FTDC_D_Buy  # 买
+        # _req.CombOffsetFlag = tdapi.THOST_FTDC_OF_Open  # 开仓
         _req.CombHedgeFlag = tdapi.THOST_FTDC_HF_Speculation
         _req.VolumeTotalOriginal = volume
         _req.IsAutoSuspend = 0
@@ -620,77 +643,86 @@ if __name__ == "__main__":
     )
 
     # 等待登录成功
-    while True:
-        time.sleep(1)
-        if spi.is_login:
-            # SHFE:上期所 | DCE:大商所  |CZCE:郑商所 | CFFEX:中金所 | INE:能源中心
+    try:
+        while True:
+            time.sleep(1)
+            if spi.is_login:
+                # SHFE:上期所 | DCE:大商所  |CZCE:郑商所 | CFFEX:中金所 | INE:能源中心
 
-            # 投资者结算结果确认
-            # spi.settlement_info_confirm()
+                # 投资者结算结果确认
+                # spi.settlement_info_confirm()
 
-            # 请求查询合约
-            # spi.qry_instrument("DCE")
-            # spi.qry_instrument(exchange_id="CZCE")
-            # spi.qry_instrument(product_id="i")
-            spi.qry_instrument(instrument_id="RU2501")
+                # 请求查询合约
+                # spi.qry_instrument("DCE")
+                # spi.qry_instrument(exchange_id="CZCE")
+                # spi.qry_instrument(product_id="i")
+                # spi.qry_instrument(instrument_id="RU2501")
 
-            # 请求查询合约手续费
-            # spi.qry_instrument_commission_rate("fu2409")
+                # 请求查询合约手续费
+                # spi.qry_instrument_commission_rate("fu2409")
 
-            # 请求查询合约保证金率
-            # spi.qry_instrument_margin_rate(instrument_id="fu2409")
-            # spi.qry_depth_market_data()
+                # 请求查询合约保证金率
+                # spi.qry_instrument_margin_rate(instrument_id="fu2409")
+                # spi.qry_depth_market_data()
 
-            # 请求查询行情
-            # spi.qry_depth_market_data(instrument_id="RM411")
+                # 请求查询行情
+                # spi.qry_depth_market_data(instrument_id="al2410")
 
-            # spi.market_order_insert("CZCE", "RM411",2)
-            # spi.limit_order_insert("CZCE", "RM409", 2720, 50)
-            # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
+                # spi.market_order_insert("CZCE", "RM411",2)
+                spi.limit_order_insert("SHFE", "al2410", 19100, 5,'sell', 'open', False)
+                # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
-            # 订单撤单需要带上原始订单号
-            # spi.order_cancel1("CZCE", "RM411", "2024041100000006")
-            # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
+                # 订单撤单需要带上原始订单号
+                # spi.order_cancel1("CZCE", "RM411", "2024041100000006")
+                # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
 
-            # 请求查询交易编码
-            # spi.qry_trading_code("CZCE")
+                # 请求查询交易编码
+                # spi.qry_trading_code("CZCE")
 
-            # 查询交易所
-            # spi.qry_exchange("DCE")
+                # 查询交易所
+                # spi.qry_exchange("DCE")
 
-            # 查询交易者持仓
-            # spi.qry_investor_position()
+                # 查询交易者持仓
+                # spi.qry_investor_position()
 
-            # 查询交易者持仓明细
-            # spi.qry_investor_position_detail("jd2409")
+                # 查询交易者持仓明细
+                # spi.qry_investor_position_detail("jd2409")
 
-            # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
-            # spi.qry_order_comm_rate("ss2407")
-            break
+                # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
+                # spi.qry_order_comm_rate("ss2407")
+                break
 
-    # 代码中的请求参数编写时测试通过, 不保证以后一定成功。
-    # 需要测试哪个请求, 取消下面对应的注释, 并按需修改参请求参数即可。
+        # 代码中的请求参数编写时测试通过, 不保证以后一定成功。
+        # 需要测试哪个请求, 取消下面对应的注释, 并按需修改参请求参数即可。
 
-    # spi.limit_order_insert("CZCE", "CF411", 12000, 1)
+        # spi.limit_order_insert("CZCE", "CF411", 12000, 1)
 
-    # spi.settlement_info_confirm()
-    # spi.qry_instrument()
-    # spi.qry_instrument(exchange_id="CZCE","DCE")
-    # spi.qry_instrument(product_id="AP")
-    # spi.qry_instrument(instrument_id="fu2405")
-    # spi.qry_instrument_commission_rate("br2409")
-    # spi.qry_instrument_commission_rate("ZC309")
-    # spi.qry_instrument_margin_rate()
-    # spi.qry_instrument_margin_rate(instrument_id="ZC309")
-    # spi.qry_depth_market_data()
-    # spi.qry_depth_market_data(instrument_id="ZC309")
-    # spi.market_order_insert("CZCE", "CF411")
-    # spi.limit_order_insert("CZCE", "CF411", 15000)
-    # spi.order_cancel1("CZCE", "CF411", "        4858")
-    # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
-    # spi.qry_trading_code("CZCE")
-    # spi.qry_exchange("DCE")
-    # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
-    # spi.qry_order_comm_rate("ss2407")
+        # spi.settlement_info_confirm()
+        # spi.qry_instrument()
+        # spi.qry_instrument(exchange_id="CZCE","DCE")
+        # spi.qry_instrument(product_id="AP")
+        # spi.qry_instrument(instrument_id="fu2405")
+        # spi.qry_instrument_commission_rate("br2409")
+        # spi.qry_instrument_commission_rate("ZC309")
+        # spi.qry_instrument_margin_rate()
+        # spi.qry_instrument_margin_rate(instrument_id="ZC309")
+        # spi.qry_depth_market_data()
+        # spi.qry_depth_market_data(instrument_id="ZC309")
+        # spi.market_order_insert("CZCE", "CF411")
+        # spi.limit_order_insert("CZCE", "CF411", 15000)
+        # spi.order_cancel1("CZCE", "CF411", "        4858")
+        # spi.order_cancel2("CZCE", "CF411", 1, -1111111, "3")
+        # spi.qry_trading_code("CZCE")
+        # spi.qry_exchange("DCE")
+        # spi.user_password_update("sWJedore20@#0808", "sWJedore20@#0807")
+        # spi.qry_order_comm_rate("ss2407")
+            if not spi.is_login:
+                break
 
-    spi.wait()
+        spi.wait()
+    except KeyboardInterrupt:
+        spi.close()
+        print("检测到键盘终止信号, 退出程序")
+    
+    print("程序结束")
+    
