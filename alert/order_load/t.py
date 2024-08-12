@@ -8,7 +8,11 @@ import sys
 
 from openctp_ctp import tdapi
 
-import config
+from config import get_channel_config
+
+channel_key = "simnow"
+environment_key = "电信1"
+channel_config = get_channel_config(channel_key, environment_key)
 
 
 class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
@@ -633,13 +637,14 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
 
 
 if __name__ == "__main__":
+    front=channel_config['td']
     spi = CTdSpiImpl(
-        config.fronts["电信1"]["td"],
-        config.user,
-        config.password,
-        config.authcode,
-        config.appid,
-        config.broker_id,
+        front,
+        channel_config["user"],
+        channel_config["password"],
+        channel_config["authcode"],
+        channel_config["appid"],
+        channel_config["broker_id"],
     )
 
     # 等待登录成功
@@ -669,7 +674,7 @@ if __name__ == "__main__":
                 # spi.qry_depth_market_data(instrument_id="al2410")
 
                 # spi.market_order_insert("CZCE", "RM411",2)
-                spi.limit_order_insert("SHFE", "al2410", 19170, 15,'buy', 'open')
+                spi.limit_order_insert("SHFE", "al2410", 19215, 5,'sell', 'open')
                 # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
                 # 订单撤单需要带上原始订单号
