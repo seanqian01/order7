@@ -11,7 +11,7 @@ from openctp_ctp import tdapi
 from config import get_channel_config
 
 channel_key = "simnow"
-environment_key = "电信1"
+environment_key = "7x24"
 channel_config = get_channel_config(channel_key, environment_key)
 
 

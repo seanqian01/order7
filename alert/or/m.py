@@ -8,8 +8,10 @@ import inspect
 from openctp_ctp import mdapi
 from config import get_channel_config
 
+#渠道名称
 channel_key = "simnow"
-environment_key = "电信1"
+#渠道环境名称
+environment_key = "7x24"
 channel_config = get_channel_config(channel_key, environment_key)
 
 
