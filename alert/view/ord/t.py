@@ -7,7 +7,6 @@ import time
 import sys
 
 from openctp_ctp import tdapi
-
 from config import get_channel_config
 
 channel_key = "simnow"

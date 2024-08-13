@@ -7,7 +7,6 @@ import inspect
 import threading
 import time
 from openctp_ctp import mdapi
-from config import get_channel_config
 
 # #渠道名称
 # channel_key = "simnow"

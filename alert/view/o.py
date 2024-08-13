@@ -1,5 +1,5 @@
-from config import get_channel_config
-from m import query_price
+from ord.config import get_channel_config
+from ord.m import query_price
 
 #渠道名称
 channel_key = "simnow"
