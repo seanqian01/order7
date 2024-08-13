@@ -11,7 +11,7 @@ from openctp_ctp import tdapi
 from config import get_channel_config
 
 channel_key = "simnow"
-environment_key = "7x24"
+environment_key = "电信1"
 channel_config = get_channel_config(channel_key, environment_key)
 
 
@@ -674,7 +674,7 @@ if __name__ == "__main__":
                 # spi.qry_depth_market_data(instrument_id="al2410")
 
                 # spi.market_order_insert("CZCE", "RM411",2)
-                spi.limit_order_insert("SHFE", "al2410", 19215, 5,'sell', 'open')
+                spi.limit_order_insert("SHFE", "al2410", 19125, 1,'sell', 'close',True)
                 # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
                 # 订单撤单需要带上原始订单号
@@ -708,7 +708,6 @@ if __name__ == "__main__":
         # spi.qry_instrument(product_id="AP")
         # spi.qry_instrument(instrument_id="fu2405")
         # spi.qry_instrument_commission_rate("br2409")
-        # spi.qry_instrument_commission_rate("ZC309")
         # spi.qry_instrument_margin_rate()
         # spi.qry_instrument_margin_rate(instrument_id="ZC309")
         # spi.qry_depth_market_data()
@@ -723,8 +722,8 @@ if __name__ == "__main__":
         # spi.qry_order_comm_rate("ss2407")
             if not spi.is_login:
                 break
-
         spi.wait()
+        # pass
     except KeyboardInterrupt:
         spi.close()
         print("检测到键盘终止信号, 退出程序")

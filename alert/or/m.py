@@ -4,7 +4,8 @@
     注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
 """
 import inspect
-
+import threading
+import time
 from openctp_ctp import mdapi
 from config import get_channel_config
 
@@ -16,10 +17,12 @@ channel_config = get_channel_config(channel_key, environment_key)
 
 
 class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
-    def __init__(self, front: str):
+    def __init__(self, front: str,instruments:tuple):
         print("-------------------------------- 启动 mduser api demo ")
         super().__init__()
         self._front = front
+        self.instruments = instruments
+        print("接收到的行情合约:", self.instruments)
 
         self._api = mdapi.CThostFtdcMdApi.CreateFtdcMdApi(
             "market"
@@ -59,13 +62,13 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
 
         print("登录成功")
 
-        if len(instruments) == 0:
+        if len(self.instruments) == 0:
             return
 
         # 订阅行情
-        print("订阅行情请求：", instruments)
+        print("订阅行情请求：", self.instruments)
         self._api.SubscribeMarketData(
-            [i.encode("utf-8") for i in instruments], len(instruments)
+            [i.encode("utf-8") for i in self.instruments], len(self.instruments)
         )
 
     def OnRtnDepthMarketData(
@@ -118,12 +121,40 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
         self._api.Release()
 
 
-if __name__ == "__main__":
+def query_price(channel_config, instruments):
     load_address=channel_config['md']
-    spi = CMdSpiImpl(load_address)
+    spi = CMdSpiImpl(load_address,instruments)
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
-    instruments = ("ru2501",
-                   "al2501",
-                   )
-    spi.wait()
+    spi._api.SubscribeMarketData(
+        [i.encode("utf-8") for i in instruments], len(instruments)
+    )
+    
+    #创建一个线程来调用wait方法
+    def wait_for_data():
+        spi.wait()
+
+    #启动线程
+    wait_thread = threading.Thread(target=wait_for_data)
+    wait_thread.start()
+
+    #主线程保持活跃
+    try:
+        print("行情查询中，这个时候别乱跳出来了吧")
+        while wait_thread.is_alive():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("程序被手动终止")
+        spi._api.Release()
+        wait_thread.join()
+
+
+# if __name__ == "__main__":
+#     load_address=channel_config['md']
+#     spi = CMdSpiImpl(load_address)
+
+#     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
+#     instruments = ("ru2501",
+#                    "al2501",
+#                    )
+#     spi.wait()
