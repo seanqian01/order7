@@ -9,11 +9,11 @@ import time
 from openctp_ctp import mdapi
 from config import get_channel_config
 
-#渠道名称
-channel_key = "simnow"
-#渠道环境名称
-environment_key = "电信1"
-channel_config = get_channel_config(channel_key, environment_key)
+# #渠道名称
+# channel_key = "simnow"
+# #渠道环境名称
+# environment_key = "电信1"
+# channel_config = get_channel_config(channel_key, environment_key)
 
 
 class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
