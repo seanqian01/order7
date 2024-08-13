@@ -11,7 +11,7 @@ from config import get_channel_config
 #渠道名称
 channel_key = "simnow"
 #渠道环境名称
-environment_key = "7x24"
+environment_key = "电信1"
 channel_config = get_channel_config(channel_key, environment_key)
 
 
@@ -124,5 +124,6 @@ if __name__ == "__main__":
 
     # 注意选择有效合约, 没有行情可能是过期合约或者不再交易时间内导致
     instruments = ("ru2501",
+                   "al2501",
                    )
     spi.wait()
