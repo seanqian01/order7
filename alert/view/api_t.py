@@ -611,13 +611,14 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
     ):
         """查询投资者持仓响应"""
         self._check_rsp(pRspInfo, pInvestorPosition, bIsLast)
-
-        PosiDirction=pInvestorPosition.PosiDirection
-        OpenVolume=pInvestorPosition.OpenVolume
-        Position=pInvestorPosition.Position
-        print(f"持仓方向：{PosiDirction}",
-              f"持仓可交易开仓量：{OpenVolume}",
-              f"持仓量：{Position}")
+        
+        if pInvestorPosition:
+            PosiDirction=pInvestorPosition.PosiDirection
+            OpenVolume=pInvestorPosition.OpenVolume
+            Position=pInvestorPosition.Position
+            print(f"持仓方向：{PosiDirction}",
+                f"持仓可交易开仓量：{OpenVolume}",
+                f"持仓量：{Position}")
 
     def qry_investor_position_detail(self, instrument_id: str = ""):
         """查询投资者持仓"""
