@@ -612,6 +612,13 @@ class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
         """查询投资者持仓响应"""
         self._check_rsp(pRspInfo, pInvestorPosition, bIsLast)
 
+        PosiDirction=pInvestorPosition.PosiDirection
+        OpenVolume=pInvestorPosition.OpenVolume
+        Position=pInvestorPosition.Position
+        print(f"持仓方向：{PosiDirction}",
+              f"持仓可交易开仓量：{OpenVolume}",
+              f"持仓量：{Position}")
+
     def qry_investor_position_detail(self, instrument_id: str = ""):
         """查询投资者持仓"""
         print("> 请求查询投资者持仓明细")
@@ -677,7 +684,7 @@ if __name__ == "__main__":
                 # spi.qry_depth_market_data(instrument_id="al2410")
 
                 # spi.market_order_insert("CZCE", "RM411",2)
-                spi.limit_order_insert("SHFE", "al2410", 19125, 1,'sell', 'close',True)
+                # spi.limit_order_insert("SHFE", "al2410", 19125, 1,'sell', 'close',True)
                 # spi.limit_order_insert("CZCE", "RS407", 5670, 1)
 
                 # 订单撤单需要带上原始订单号
@@ -690,8 +697,8 @@ if __name__ == "__main__":
                 # 查询交易所
                 # spi.qry_exchange("DCE")
 
-                # 查询交易者持仓
-                # spi.qry_investor_position()
+                #查询交易者持仓
+                spi.qry_investor_position("al2501")
 
                 # 查询交易者持仓明细
                 # spi.qry_investor_position_detail("jd2409")
