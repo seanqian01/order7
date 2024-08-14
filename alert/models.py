@@ -34,6 +34,39 @@ class User(AbstractUser):
         return self.username
 
 
+class Strategy(models.Model):
+    strategy_name = models.CharField(max_length=120, unique=True, verbose_name="策略名称")
+
+    # TIME_CYCLE_CHOICES = [
+    #     ('1m', '1分钟'),
+    #     ('5m', '5分钟'),
+    #     ('15m', '15分钟'),
+    #     ('30m', '30分钟'),
+    #     ('1h', '1小时'),
+    #     ('2h', '2小时'),
+    #     ('4h', '4小时'),
+    #     ('6h', '6小时'),
+    #     ('12h', '12小时'),
+    #     ('1d', '1天'),
+    #     ('1w', '1周'),
+    # ]
+    strategy_time_cycle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, verbose_name="策略时间周期")
+    strategy_desc = models.TextField(max_length=255, blank=True, verbose_name="策略描述")
+    stratepy_id = models.IntegerField(verbose_name="策略序号ID")
+    status = models.BooleanField(default=True, verbose_name="策略状态")
+    create_time = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    update_time = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    stra_creater = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="策略创建者")
+
+    class Meta:
+        db_table = 'strategy'
+        verbose_name = '交易策略'
+        verbose_name_plural = verbose_name
+        ordering = ('-update_time',)
+
+    def __str__(self):
+        return self.strategy_name
+
 class stra_Alert(models.Model):
     alert_title = models.CharField(null=True, max_length=255, verbose_name="信号描述")
     symbol = models.CharField(null=True, max_length=70, verbose_name="名称")
@@ -49,6 +82,7 @@ class stra_Alert(models.Model):
     status = models.BooleanField(default=False, blank=True, verbose_name="有效性")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="触发时间")
     time_circle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, null=True, blank=True, verbose_name="时间周期")
+    strategy_id = models.ForeignKey(Strategy, on_delete=models.CASCADE, null=True, blank=True, verbose_name="策略ID")
 
     def __str__(self):
         return self.scode
@@ -102,38 +136,6 @@ class stra_Order(models.Model):
         verbose_name_plural = verbose_name
 
 
-class Strategy(models.Model):
-    strategy_name = models.CharField(max_length=120, unique=True, verbose_name="策略名称")
-
-    # TIME_CYCLE_CHOICES = [
-    #     ('1m', '1分钟'),
-    #     ('5m', '5分钟'),
-    #     ('15m', '15分钟'),
-    #     ('30m', '30分钟'),
-    #     ('1h', '1小时'),
-    #     ('2h', '2小时'),
-    #     ('4h', '4小时'),
-    #     ('6h', '6小时'),
-    #     ('12h', '12小时'),
-    #     ('1d', '1天'),
-    #     ('1w', '1周'),
-    # ]
-    strategy_time_cycle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, verbose_name="策略时间周期")
-    strategy_desc = models.TextField(max_length=255, blank=True, verbose_name="策略描述")
-
-    status = models.BooleanField(default=True, verbose_name="策略状态")
-    create_time = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
-    update_time = models.DateTimeField(auto_now=True, verbose_name="更新时间")
-    stra_creater = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="策略创建者")
-
-    class Meta:
-        db_table = 'strategy'
-        verbose_name = '交易策略'
-        verbose_name_plural = verbose_name
-        ordering = ('-update_time',)
-
-    def __str__(self):
-        return self.strategy_name
 
 
 # 商户类型表

@@ -36,9 +36,10 @@ class AlertAdmin(ImportExportModelAdmin, ExportActionModelAdmin):
                     'price',
                     'action',
                     'status',
+                    'strategy_id',
                     'created_at',
                     ]
-    list_filter = ('created_at', 'time_circle', 'scode', 'contractType', 'action','status')
+    list_filter = ('created_at', 'time_circle', 'scode', 'contractType', 'strategy_id','status')
     search_fields = ['scode', 'price']
     list_per_page = 30
     ordering = ('-created_at',)
