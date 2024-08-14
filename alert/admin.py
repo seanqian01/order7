@@ -70,7 +70,7 @@ class AlertAdmin(ImportExportModelAdmin, ExportActionModelAdmin):
 
 
 class StrategyAdmin(admin.ModelAdmin):
-    list_display = ['strategy_name', 'status', 'strategy_time_cycle', 'stra_creater', 'update_time', 'create_time', ]
+    list_display = ['id','strategy_name', 'status', 'strategy_time_cycle', 'stra_creater', 'update_time', 'create_time', ]
     list_filter = ('strategy_name', 'status', 'strategy_time_cycle',)
     list_per_page = 30
 

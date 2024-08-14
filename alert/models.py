@@ -52,7 +52,6 @@ class Strategy(models.Model):
     # ]
     strategy_time_cycle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, verbose_name="策略时间周期")
     strategy_desc = models.TextField(max_length=255, blank=True, verbose_name="策略描述")
-    stratepy_id = models.IntegerField(verbose_name="策略序号ID")
     status = models.BooleanField(default=True, verbose_name="策略状态")
     create_time = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     update_time = models.DateTimeField(auto_now=True, verbose_name="更新时间")
