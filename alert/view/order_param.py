@@ -3,7 +3,7 @@
 #交易所名称
 exchange_id="SHFE"
 #合约名称
-instrument_id="ag2501"
+instrument_id="al2501"
 
 #合约合集名称
 instruments=(

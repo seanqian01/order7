@@ -794,6 +794,7 @@ def order_limit(channel_config, instrument_id, price, volume, direction, offset)
             False
         )
         print("下单成功")
+        spi.wait()
     except Exception as e:
         print(f"下单失败: {e}")
     finally:
