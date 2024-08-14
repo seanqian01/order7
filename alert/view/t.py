@@ -7,11 +7,14 @@ import time
 import sys
 
 from openctp_ctp import tdapi
-from config import get_channel_config
+from trading_time import is_trading_time
+from config import channel_config
 
-channel_key = "simnow"
-environment_key = "电信1"
-channel_config = get_channel_config(channel_key, environment_key)
+sys.path.append("..")
+
+# channel_key = "simnow"
+# environment_key = "电信1"
+# channel_config = get_channel_config(channel_key, environment_key)
 
 
 class CTdSpiImpl(tdapi.CThostFtdcTraderSpi):
@@ -728,4 +731,72 @@ if __name__ == "__main__":
         print("检测到键盘终止信号, 退出程序")
     
     print("程序结束")
-    
+
+is_settlement_confirmed = None
+
+def order_limit(channel_config, instrument_id, price, volume, direction, offset):
+    """
+    封装的有限单下单函数。
+
+    :param channel_config: dict, 包含交易相关的配置参数
+    :param instrument_id: str, 合约代码
+    :param price: float, 下单价格
+    :param volume: int, 下单数量
+    :param direction: str, 交易方向 ('buy' 或 'sell')
+    :param offset: str, 开平标志 ('open' 或 'close')
+    """
+    global is_settlement_confirmed
+
+    # 初始化交易对象
+    front = channel_config['td']
+    spi = CTdSpiImpl(
+        front,
+        channel_config["user"],
+        channel_config["password"],
+        channel_config["authcode"],
+        channel_config["appid"],
+        channel_config["broker_id"],
+    )
+
+    # 等待登录成功
+    try:
+        while not spi.is_login:
+            print("未登录，等待登录...")
+            time.sleep(1)
+        print("登录成功")
+    except Exception as e:
+        print(f"登录失败: {e}")
+        spi.release()
+        return
+
+    # 在首次启动或交易时间段内进行结算确认
+    if not is_settlement_confirmed and is_trading_time():
+        try:
+            print("进行结算确认")
+            spi.settlement_info_confirm()
+            is_settlement_confirmed = True
+            print("结算确认成功")
+        except Exception as e:
+            print(f"结算确认失败: {e}")
+            spi.release()
+            return
+
+    # 执行下单
+    try:
+        spi.limit_order_insert(
+            channel_config["exchange_id"],
+            instrument_id,  # 确保 instrument_id 不超过 81 个字符
+            price,
+            volume,
+            direction,
+            offset,
+            False
+        )
+        print("下单成功")
+    except Exception as e:
+        print(f"下单失败: {e}")
+    finally:
+        spi.release()  # 确保在完成操作后释放资源
+        print("连接释放")
+
+

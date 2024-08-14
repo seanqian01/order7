@@ -1,18 +1,12 @@
-from ord.config import get_channel_config
-from ord.m import query_price
+from config import channel_config, instruments,instrument_id
+from m import query_price
+from t import order_limit
 
-#渠道名称
-channel_key = "simnow"
-#渠道环境名称
-environment_key = "7x24"
-channel_config = get_channel_config(channel_key, environment_key)
-
-instruments=(
-    "ru2501",
-    "al2501",
-    "ag2501",
-)
 
 if __name__ == '__main__':
+    #查询行情和价格
     query_price(channel_config, instruments)
+    #下单有限条件单
+    order_limit(channel_config, instrument_id,19250,1,"sell","open")
+
     

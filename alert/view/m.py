@@ -119,7 +119,7 @@ class CMdSpiImpl(mdapi.CThostFtdcMdSpi):
 
         self._api.Release()
 
-
+#查询行情函数
 def query_price(channel_config, instruments):
     load_address=channel_config['md']
     spi = CMdSpiImpl(load_address,instruments)
