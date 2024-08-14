@@ -9,6 +9,7 @@ import sys
 from openctp_ctp import tdapi
 from trading_time import is_trading_time
 from config import channel_config
+from order_param import exchange_id
 
 sys.path.append("..")
 
@@ -784,7 +785,7 @@ def order_limit(channel_config, instrument_id, price, volume, direction, offset)
     # 执行下单
     try:
         spi.limit_order_insert(
-            channel_config["exchange_id"],
+            exchange_id,
             instrument_id,  # 确保 instrument_id 不超过 81 个字符
             price,
             volume,
