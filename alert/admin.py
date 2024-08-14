@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.http import HttpRequest
 from alert.models import stra_Alert, Strategy, Merchant, User
 from django.contrib.auth.admin import UserAdmin
 import logging
@@ -73,6 +74,9 @@ class StrategyAdmin(admin.ModelAdmin):
     list_display = ['id','strategy_name', 'status', 'strategy_time_cycle', 'stra_creater', 'update_time', 'create_time', ]
     list_filter = ('strategy_name', 'status', 'strategy_time_cycle',)
     list_per_page = 30
+
+    def get_list_display_links(self, request, list_display):
+        return ("strategy_name")
 
     def has_add_permission(self, request):
         return True
