@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.http import HttpRequest
-from alert.models import stra_Alert, Strategy, Merchant, User
+from alert.models import stra_Alert, Strategy, Merchant, User, Exchange, ContractCode, ContractCode
 from django.contrib.auth.admin import UserAdmin
 import logging
 from import_export.admin import ImportExportModelAdmin, ExportActionModelAdmin
@@ -137,6 +137,20 @@ class LogEntryAdmin(admin.ModelAdmin):
     list_display = ['action_time', 'user', 'content_type', 'object_repr', 'action_flag', 'change_message']
     search_fields = ['user__username', 'object_repr', 'change_message']
     list_filter = ['action_time', 'user', 'content_type', 'action_flag']
+
+@admin.register(Exchange)
+class ExchangeAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'is_active', 'created_at', 'updated_at']
+    list_filter = ['is_active']
+    search_fields = ['name', 'code']
+
+@admin.register(ContractCode)
+class ContractCodeAdmin(admin.ModelAdmin):
+    list_display = ['symbol', 'exchange', 'name', 'product_type', 'price_precision', 'size_precision', 'is_active']
+    list_filter = ['exchange', 'product_type', 'is_active']
+    search_fields = ['symbol', 'name']
+    raw_id_fields = ['exchange']
+
 
 admin.site.register(Strategy, StrategyAdmin)
 

@@ -172,3 +172,52 @@ class Merchant(models.Model):
 
     def __str__(self):
         return self.merchant_name
+
+
+class Exchange(models.Model):
+    """交易所配置"""
+    name = models.CharField('交易所名称', max_length=50)
+    code = models.CharField('交易所代码', max_length=20, unique=True)
+    description = models.TextField('描述', blank=True)
+    api_url = models.CharField('API地址', max_length=200)
+    test_api_url = models.CharField('测试API地址', max_length=200, blank=True)
+    is_active = models.BooleanField('是否启用', default=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '交易所'
+        verbose_name_plural = verbose_name
+        ordering = ['code']
+
+    def __str__(self):
+        return self.name
+
+class ContractCode(models.Model):
+    """交易对配置"""
+    PRODUCT_TYPES = [
+        ('spot', '现货'),
+        ('perpetual', '永续合约'),
+    ]
+    
+    exchange = models.ForeignKey(Exchange, on_delete=models.CASCADE, related_name='contracts', verbose_name='交易所')
+    symbol = models.CharField('交易对象符号', max_length=20)
+    name = models.CharField('交易对象名称', max_length=50)
+    description = models.CharField('描述', max_length=100, blank=True)
+    product_type = models.CharField('产品类型', max_length=20, choices=PRODUCT_TYPES, default='perpetual')
+    min_size = models.DecimalField('最小下单数量', max_digits=18, decimal_places=8)
+    size_increment = models.DecimalField('数量增量', max_digits=18, decimal_places=8)
+    price_precision = models.IntegerField('价格精度')
+    size_precision = models.IntegerField('数量精度')
+    is_active = models.BooleanField('是否启用', default=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '交易对'
+        verbose_name_plural = verbose_name
+        unique_together = ['exchange', 'symbol']
+        ordering = ['exchange', 'symbol']
+
+    def __str__(self):
+        return f"{self.exchange.name} - {self.name} ({self.get_product_type_display()})"
