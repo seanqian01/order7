@@ -72,9 +72,9 @@ class HyperliquidTrader:
                 self.exchange_instance = None
             
             logger.info(f"HyperliquidTrader initialized in {self.env} environment")
-            logger.info(f"Using API URL: {self.api_url}")
-            logger.info(f"Using wallet address: {self.wallet_address}")
-            logger.info(f"Using API wallet address: {self.account.address}")
+            
+            # 只显示环境信息
+            logger.debug(f"Hyperliquid API已初始化 ({self.env})")
             
             # WebSocket连接状态
             self._ws_connected = False
@@ -238,14 +238,22 @@ class HyperliquidTrader:
             return {}
 
     @timeout_handler
-    def place_order(self, symbol: str, side: str, quantity: int, price: float, reduce_only: bool = False):
+    def place_order(self, symbol: str, side: str, quantity: int, price: float, 
+                 position_type: str = "open", leverage: int = None):
         """
         下限价单
         :param symbol: 交易对名称，例如 "HYPE-USDC"
-        :param side: 交易方向，"buy" 或 "sell"
-        :param quantity: 交易数量
-        :param price: 限价单价格
-        :param reduce_only: 是否为平仓单
+        :param side: 交易方向，"buy"（做多）或"sell"（做空）
+        :param quantity: 交易数量（正整数）
+                        - 开仓：quantity > 0
+                          * buy: 开多单，持仓量为 +quantity
+                          * sell: 开空单，持仓量为 -quantity
+                        - 平仓：quantity > 0
+                          * buy: 平空单（买入平空，减少负的持仓量）
+                          * sell: 平多单（卖出平多，减少正的持仓量）
+        :param price: 交易价格
+        :param position_type: 仓位类型，"open"（开仓）或"close"（平仓）
+        :param leverage: 杠杆倍数，如果不指定则使用默认杠杆
         :return: 下单结果
         """
         try:
@@ -256,230 +264,114 @@ class HyperliquidTrader:
             normalized_price = self._normalize_price(symbol, price)
             logger.info(f"Using normalized price: {normalized_price} (original: {price})")
             
-            # 检查保证金是否足够（如果不是平仓订单）
-            if not reduce_only:
-                margin_check = self._check_margin(symbol, quantity, normalized_price)
-                if margin_check["status"] != "success":
-                    logger.warning(f"保证金检查失败: {margin_check['error']}")
+            # 设置杠杆
+            actual_leverage = leverage if leverage is not None else self.default_leverage
+            
+            # 确保数量为正数
+            if quantity <= 0:
+                return {
+                    "status": "error",
+                    "error": "交易数量必须为正数"
+                }
+            
+            # 获取当前持仓信息
+            current_positions = self.get_positions()
+            if current_positions["status"] != "success":
+                logger.error("无法获取当前持仓信息")
+                return {
+                    "status": "error",
+                    "error": "无法获取当前持仓信息"
+                }
+                
+            # 判断是否设置reduce_only
+            reduce_only = False
+            if position_type == "close":
+                reduce_only = True
+                # 检查是否有对应方向的持仓
+                symbol_position = current_positions["positions"].get(symbol, {})
+                position_size = float(symbol_position.get("size", 0))
+                
+                # 如果没有持仓或持仓方向与平仓方向不匹配，返回错误
+                if position_size == 0:
                     return {
                         "status": "error",
-                        "error": margin_check["error"]
+                        "error": "没有可平仓的持仓"
                     }
-                logger.info(f"保证金检查通过: {margin_check}")
-            
-            # 参数验证
-            if not isinstance(symbol, str) or '-' not in symbol:
-                error_msg = f"Invalid symbol format: {symbol}. Expected format: COIN-USDC"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg
-                }
-
-            # 验证交易方向
-            if side.lower() not in ["buy", "sell"]:
-                error_msg = f"Invalid side: {side}. Must be 'buy' or 'sell'"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg
-                }
-
-            # 检查当前持仓
-            position_info = self.get_position(symbol)
-            logger.info(f"Current position info: {position_info}")
-            
-            if position_info.get("status") != "success":
-                error_msg = f"Failed to get position info: {position_info.get('error')}"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg
-                }
+                elif (position_size > 0 and side.lower() != "sell") or \
+                     (position_size < 0 and side.lower() != "buy"):
+                    return {
+                        "status": "error",
+                        "error": "平仓方向与持仓方向不匹配"
+                    }
+            elif position_type == "open":
+                # 检查是否有反向持仓
+                symbol_position = current_positions["positions"].get(symbol, {})
+                position_size = float(symbol_position.get("size", 0))
                 
-            current_position = position_info.get("position")
+                # 如果有反向持仓，提示用户
+                if (side.lower() == "buy" and position_size < 0) or \
+                   (side.lower() == "sell" and position_size > 0):
+                    logger.warning(f"当前已有反向持仓 ({position_size})")
             
-            # 处理平仓逻辑
-            if current_position:
-                current_size = current_position.get("size", 0)
-                logger.info(f"Current position size: {current_size}")
+            # 生成订单ID
+            import time
+            cloid = Cloid.from_int(int(time.time() * 1000))  # 使用时间戳作为订单ID
+            
+            # 构建订单参数
+            order_params = {
+                "coin": symbol.split('-')[0] if '-' in symbol else symbol,
+                "is_buy": side.lower() == "buy",
+                "sz": quantity,
+                "limit_px": normalized_price,
+                "reduce_only": reduce_only,
+                "order_type": {"limit": {"tif": "Gtc"}},
+                "cloid": cloid
+            }
+            
+            # 记录订单信息
+            direction = "多" if side.lower() == "buy" else "空"
+            action = "开仓" if position_type == "open" else "平仓"
+            logger.info(f"准备{action}{direction}单: {quantity}张 @ {normalized_price} USDC")
+            logger.info(f"订单参数: leverage={actual_leverage}, reduce_only={reduce_only}")
                 
-                # 如果是平仓操作
-                if (current_size > 0 and side.lower() == "sell") or (current_size < 0 and side.lower() == "buy"):
-                    reduce_only = True
-                    quantity = abs(current_size)
-                    logger.info(f"Closing position: size={quantity}, reduce_only={reduce_only}")
-                elif reduce_only:
-                    # 如果指定了reduce_only但方向错误
-                    if (current_size > 0 and side.lower() == "buy") or (current_size < 0 and side.lower() == "sell"):
-                        error_msg = f"Invalid reduce_only order: Cannot {side} when position is {current_size}"
-                        logger.error(error_msg)
-                        return {
-                            "status": "error",
-                            "error": error_msg
+            # 发送订单
+            try:
+                response = self.exchange.order(order_params)
+                logger.info(f"订单响应: {response}")
+                
+                if response.get("status") == "ok":
+                    return {
+                        "status": "success",
+                        "response": response,
+                        "order_info": {
+                            "symbol": symbol,
+                            "side": side,
+                            "quantity": quantity,
+                            "price": normalized_price,
+                            "reduce_only": reduce_only,
+                            "position_type": position_type,
+                            "direction": direction,
+                            "cloid": cloid
                         }
-            elif reduce_only:
-                error_msg = "Cannot place reduce_only order when no position exists"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg
-                }
-
-            # 确保数值参数为正确的类型
-            try:
-                quantity = int(float(quantity))  # 确保数量是整数
-                price = float(normalized_price)
-                if quantity <= 0 or price <= 0:
-                    raise ValueError("Quantity and price must be positive")
-                logger.info("Converted numeric parameters:")
-                logger.info(f"quantity: {quantity} (type: {type(quantity)})")
-                logger.info(f"price: {price} (type: {type(price)})")
-            except ValueError as e:
-                error_msg = f"Invalid numeric parameters: {str(e)}"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg
-                }
-            
-            # 从 symbol 中提取币种名称（去掉 -USDC 后缀）
-            coin_name = symbol.split('-')[0].upper()  # 确保币种名称大写
-            logger.info(f"Extracted coin_name: {coin_name!r} (type: {type(coin_name)})")
-            
-            # 生成唯一的订单ID
-            import uuid
-            import random
-            cloid = Cloid.from_int(random.randint(1, 2**32-1))  # 使用随机整数生成 Cloid
-            logger.info(f"Generated cloid: {cloid!r}")
-            
-            # 确定买卖方向
-            is_buy = side.lower() == "buy"
-            logger.info(f"Determined is_buy: {is_buy!r} (type: {type(is_buy)})")
-            
-            # 检查数量是否小于最小交易量
-            min_size = 1
-            if quantity < min_size:
-                logger.warning(f"Order quantity {quantity} is less than minimum size {min_size}, adjusting to minimum")
-                quantity = min_size
-            
-            try:
-                # 构建下单参数
-                order_params = {
-                    "name": coin_name,
-                    "is_buy": is_buy,
-                    "sz": quantity,
-                    "limit_px": price,
-                    "reduce_only": reduce_only,
-                    "order_type": {"limit": {"tif": "Gtc"}},
-                    "cloid": cloid
-                }
-                logger.info("Final order parameters:")
-                for key, value in order_params.items():
-                    logger.info(f"  {key}: {value!r} (type: {type(value)})")
-                
-                # 使用SDK的order方法下限价单
-                try:
-                    logger.info("Calling exchange.order with parameters:")
-                    logger.info(json.dumps({k: str(v) if isinstance(v, Cloid) else v for k, v in order_params.items()}, indent=2))
-                    response = self.exchange.order(**order_params)
-                    logger.info(f"Raw API Response: {response!r}")
-                    logger.info(f"Response type: {type(response)}")
-                    
-                    if isinstance(response, (list, tuple)):
-                        logger.info(f"Response is sequence type, length: {len(response)}")
-                        logger.info(f"Response elements: {[type(x) for x in response]}")
-                        
-                    if isinstance(response, dict):
-                        logger.info(f"Response keys: {list(response.keys())}")
-                        
-                    # 检查订单状态
-                    if response.get("status") == "ok":
-                        statuses = response.get("response", {}).get("data", {}).get("statuses", [])
-                        logger.info(f"Order statuses: {statuses}")
-                        
-                        if statuses:
-                            status = statuses[0]
-                            if "resting" in status:
-                                logger.info("Order is resting (placed successfully)")
-                                resting_info = status["resting"]
-                                logger.info(f"Resting order details: {resting_info}")
-                            elif "filled" in status:
-                                logger.info("Order was immediately filled")
-                                filled_info = status["filled"]
-                                logger.info(f"Filled order details: {filled_info}")
-                            else:
-                                logger.warning(f"Unexpected status: {status}")
-                                
-                            # 验证订单是否真实存在
-                            order_status = self.info.query_order_by_cloid(self.wallet_address, cloid)
-                            logger.info(f"Order verification by cloid: {order_status}")
-                    else:
-                        logger.error(f"Order placement failed with status: {response.get('status')}")
-                        
-                except Exception as e:
-                    logger.error(f"Error during API call: {str(e)}")
-                    import traceback
-                    logger.error(f"Traceback:\n{traceback.format_exc()}")
-                    raise
-                
-                # 处理响应
-                if isinstance(response, str):
-                    try:
-                        logger.info("Attempting to parse response as JSON string")
-                        response = json.loads(response)
-                        logger.info(f"Parsed JSON response: {response}")
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Failed to parse response as JSON: {str(e)}")
-                        response = {"message": response}
-                
-                if not isinstance(response, dict):
-                    logger.warning(f"Converting non-dict response to dict: {response}")
-                    response = {"message": str(response)}
-                
-                # 检查错误信息
-                error_message = response.get("error") or response.get("message")
-                if error_message and "success" not in str(error_message).lower():
-                    logger.error(f"API returned error: {error_message}")
+                    }
+                else:
                     return {
                         "status": "error",
-                        "error": str(error_message)
+                        "error": response.get("error", "Unknown error")
                     }
-                
-                order_type = "平仓" if reduce_only else "开仓"
-                logger.info(f"Limit order placed successfully: symbol={symbol}, side={side}, type={order_type}, "
-                        f"quantity={quantity}, price={price}, response={response}")
-                
-                # 返回成功响应
-                return {
-                    "status": "success",
-                    "response": response,
-                    "order_info": {
-                        "symbol": symbol,
-                        "side": side,
-                        "quantity": quantity,
-                        "price": price,
-                        "reduce_only": reduce_only,
-                        "cloid": cloid  # 直接传递 Cloid 对象
-                    }
-                }
+                    
             except Exception as e:
-                error_msg = f"Error placing limit order: {str(e)}"
-                logger.error(error_msg)
-                import traceback
-                logger.error(f"Traceback:\n{traceback.format_exc()}")
+                logger.error(f"发送订单时出错: {str(e)}")
                 return {
                     "status": "error",
-                    "error": error_msg
+                    "error": str(e)
                 }
+                
         except Exception as e:
-            error_msg = f"Error preparing order parameters: {str(e)}"
-            logger.error(error_msg)
-            import traceback
-            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            logger.error(f"下单过程中出错: {str(e)}")
             return {
                 "status": "error",
-                "error": error_msg
+                "error": str(e)
             }
 
     def _normalize_price(self, symbol: str, price: float) -> float:
@@ -744,8 +636,7 @@ class HyperliquidTrader:
                 side=side,
                 quantity=quantity,
                 price=price,
-                order_type="LIMIT",
-                reduce_only=True
+                position_type="close"
             )
 
         except Exception as e:
