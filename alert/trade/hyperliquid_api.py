@@ -1,6 +1,9 @@
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
+from hyperliquid.utils.types import Cloid
+from eth_account import Account
+from eth_account.signers.local import LocalAccount
 from django.conf import settings
 import logging
 from decimal import Decimal
@@ -11,6 +14,9 @@ import time
 import json
 import datetime
 from alert.models import Exchange as ExchangeModel, ContractCode
+import websocket
+import threading
+import ssl
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +40,29 @@ class HyperliquidTrader:
     def __init__(self, wallet_address=None, api_secret=None):
         """
         初始化交易接口
-        :param wallet_address: 钱包地址
-        :param api_secret: API密钥
         """
         try:
-            env = settings.HYPERLIQUID_CONFIG["env"]
-            self.env_config = settings.HYPERLIQUID_CONFIG[env]
+            # 配置
+            self.env = settings.HYPERLIQUID_CONFIG.get('env', 'mainnet')
+            env_config = settings.HYPERLIQUID_CONFIG.get(self.env, {})
             
-            self.wallet_address = wallet_address or self.env_config["wallet_address"]
-            self.api_secret = api_secret or self.env_config["api_secret"]
-            self.default_leverage = settings.HYPERLIQUID_CONFIG["default_leverage"]
+            self.api_url = env_config.get('api_url')
+            self.wallet_address = wallet_address or env_config.get('wallet_address')
+            self.api_secret = api_secret or env_config.get('api_secret')
+            self.default_leverage = settings.HYPERLIQUID_CONFIG.get('default_leverage', 1)
             
-            self.info = Info(self.env_config["api_url"])
-            self.exchange = Exchange(self.env_config["api_url"])
+            # 创建钱包对象
+            self.account: LocalAccount = Account.from_key(self.api_secret)
+            if self.wallet_address == "":
+                self.wallet_address = self.account.address
+            
+            self.info = Info(self.api_url)
+            # 使用钱包对象初始化交易所
+            self.exchange = Exchange(
+                self.account,
+                self.api_url,
+                account_address=self.wallet_address
+            )
             
             # 获取交易所实例
             try:
@@ -55,10 +71,130 @@ class HyperliquidTrader:
                 logger.error("HYPERLIQUID exchange not found in database")
                 self.exchange_instance = None
             
-            logger.info(f"HyperliquidTrader initialized in {env} environment")
+            logger.info(f"HyperliquidTrader initialized in {self.env} environment")
+            logger.info(f"Using API URL: {self.api_url}")
+            logger.info(f"Using wallet address: {self.wallet_address}")
+            logger.info(f"Using API wallet address: {self.account.address}")
+            
+            # WebSocket连接状态
+            self._ws_connected = False
+            self._ws_lock = threading.Lock()
+            self._init_websocket()
+            
         except Exception as e:
             logger.error(f"Error initializing HyperliquidTrader: {str(e)}")
             raise
+
+    def _init_websocket(self):
+        """
+        初始化WebSocket连接
+        """
+        try:
+            with self._ws_lock:
+                if not self._ws_connected:
+                    # 关闭可能存在的旧连接
+                    if hasattr(self, '_ws'):
+                        try:
+                            self._ws.close()
+                        except:
+                            pass
+                    
+                    # 创建新的WebSocket连接
+                    ws_url = f"wss://{'dev-' if self.env == 'testnet' else ''}api.hyperliquid.xyz/ws"
+                    logger.info(f"正在连接WebSocket: {ws_url}")
+                    
+                    # 创建连接事件
+                    self._ws_connected_event = threading.Event()
+                    
+                    # 创建WebSocket连接
+                    self._ws = websocket.WebSocketApp(
+                        ws_url,
+                        on_open=self._on_ws_open,
+                        on_close=self._on_ws_close,
+                        on_error=self._on_ws_error,
+                        on_message=self._on_ws_message
+                    )
+                    
+                    # 在后台线程中运行WebSocket，调整ping/pong参数
+                    self._ws_thread = threading.Thread(target=lambda: self._ws.run_forever(
+                        sslopt={"cert_reqs": ssl.CERT_NONE},
+                        ping_interval=10,  # 减少ping间隔
+                        ping_timeout=5,    # 减少ping超时
+                        skip_utf8_validation=True
+                    ))
+                    self._ws_thread.daemon = True
+                    self._ws_thread.start()
+                    
+                    # 等待连接建立
+                    if self._ws_connected_event.wait(timeout=10):
+                        logger.info("WebSocket连接成功建立")
+                        self._subscribe_market_data()
+                    else:
+                        logger.warning("WebSocket连接超时，将继续执行订单")
+                        
+        except Exception as e:
+            logger.warning(f"初始化WebSocket连接失败: {str(e)}")
+            import traceback
+            logger.warning(f"Traceback:\n{traceback.format_exc()}")
+
+    def _on_ws_open(self, ws):
+        """WebSocket连接建立时的回调"""
+        with self._ws_lock:
+            self._ws_connected = True
+        self._ws_connected_event.set()  # 设置连接成功事件
+        logger.info("WebSocket连接已建立")
+
+    def _on_ws_close(self, ws, close_status_code, close_msg):
+        """WebSocket连接关闭时的回调"""
+        with self._ws_lock:
+            self._ws_connected = False
+        logger.info("WebSocket连接已关闭")
+
+    def _on_ws_error(self, ws, error):
+        """WebSocket错误时的回调"""
+        logger.warning(f"WebSocket错误: {error}")
+
+    def _on_ws_message(self, ws, message):
+        """WebSocket消息处理"""
+        try:
+            data = json.loads(message)
+            logger.debug(f"收到WebSocket消息: {data}")
+        except Exception as e:
+            logger.warning(f"处理WebSocket消息时出错: {str(e)}")
+
+    def _subscribe_market_data(self):
+        """订阅市场数据"""
+        try:
+            # 构建订阅消息
+            subscribe_msg = {
+                "method": "subscribe",
+                "subscription": {
+                    "type": "trades",
+                    "coins": ["HYPE"]  # 可以根据需要添加其他币种
+                }
+            }
+            
+            # 发送订阅请求
+            self._ws.send(json.dumps(subscribe_msg))
+            logger.info("已发送市场数据订阅请求")
+        except Exception as e:
+            logger.warning(f"订阅市场数据失败: {str(e)}")
+
+    def _ensure_ws_connection(self):
+        """
+        确保WebSocket连接正常
+        """
+        try:
+            with self._ws_lock:
+                if not self._ws_connected:
+                    logger.info("正在重新建立WebSocket连接...")
+                    self._init_websocket()
+                    if not self._ws_connected:
+                        logger.warning("无法建立WebSocket连接，但将继续执行订单")
+                else:
+                    logger.debug("WebSocket连接正常")
+        except Exception as e:
+            logger.warning(f"检查WebSocket连接状态时出错: {str(e)}")
 
     def get_default_symbols(self):
         """
@@ -101,61 +237,293 @@ class HyperliquidTrader:
             logger.warning(f"Contract config not found for symbol: {symbol}")
             return {}
 
-    def place_order(self, symbol, side, quantity, price=None, order_type="LIMIT"):
+    @timeout_handler
+    def place_order(self, symbol: str, side: str, quantity: int, price: float, reduce_only: bool = False):
         """
-        下单函数
-        :param symbol: 交易对
-        :param side: 方向 (buy/sell)
-        :param quantity: 数量
-        :param price: 价格（市价单可不传）
-        :param order_type: 订单类型 (LIMIT/MARKET)
-        :return: 订单响应
+        下限价单
+        :param symbol: 交易对名称，例如 "HYPE-USDC"
+        :param side: 交易方向，"buy" 或 "sell"
+        :param quantity: 交易数量
+        :param price: 限价单价格
+        :param reduce_only: 是否为平仓单
+        :return: 下单结果
         """
         try:
-            # 转换TradingView的买卖方向到Hyperliquid的格式
-            hl_side = "B" if side.lower() == "buy" else "S"
+            # 确保WebSocket连接正常
+            self._ensure_ws_connection()
             
-            # 确保数量为正数
-            quantity = abs(float(quantity))
+            # 规范化价格
+            normalized_price = self._normalize_price(symbol, price)
+            logger.info(f"Using normalized price: {normalized_price} (original: {price})")
             
-            # 如果提供了价格，确保它是float类型
-            if price is not None:
-                price = float(price)
+            # 检查保证金是否足够（如果不是平仓订单）
+            if not reduce_only:
+                margin_check = self._check_margin(symbol, quantity, normalized_price)
+                if margin_check["status"] != "success":
+                    logger.warning(f"保证金检查失败: {margin_check['error']}")
+                    return {
+                        "status": "error",
+                        "error": margin_check["error"]
+                    }
+                logger.info(f"保证金检查通过: {margin_check}")
             
-            # 构建订单参数
-            order_params = {
-                "coin": symbol,
-                "is_buy": hl_side == "B",
-                "sz": quantity,
-                "reduce_only": False,
-                "leverage": self.default_leverage
-            }
+            # 参数验证
+            if not isinstance(symbol, str) or '-' not in symbol:
+                error_msg = f"Invalid symbol format: {symbol}. Expected format: COIN-USDC"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+
+            # 验证交易方向
+            if side.lower() not in ["buy", "sell"]:
+                error_msg = f"Invalid side: {side}. Must be 'buy' or 'sell'"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+
+            # 检查当前持仓
+            position_info = self.get_position(symbol)
+            logger.info(f"Current position info: {position_info}")
             
-            if order_type == "LIMIT" and price is not None:
-                order_params["limit_px"] = price
+            if position_info.get("status") != "success":
+                error_msg = f"Failed to get position info: {position_info.get('error')}"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+                
+            current_position = position_info.get("position")
             
-            # 发送订单
-            if order_type == "MARKET":
-                response = self.exchange.market_order(**order_params)
-            else:
-                response = self.exchange.limit_order(**order_params)
+            # 处理平仓逻辑
+            if current_position:
+                current_size = current_position.get("size", 0)
+                logger.info(f"Current position size: {current_size}")
+                
+                # 如果是平仓操作
+                if (current_size > 0 and side.lower() == "sell") or (current_size < 0 and side.lower() == "buy"):
+                    reduce_only = True
+                    quantity = abs(current_size)
+                    logger.info(f"Closing position: size={quantity}, reduce_only={reduce_only}")
+                elif reduce_only:
+                    # 如果指定了reduce_only但方向错误
+                    if (current_size > 0 and side.lower() == "buy") or (current_size < 0 and side.lower() == "sell"):
+                        error_msg = f"Invalid reduce_only order: Cannot {side} when position is {current_size}"
+                        logger.error(error_msg)
+                        return {
+                            "status": "error",
+                            "error": error_msg
+                        }
+            elif reduce_only:
+                error_msg = "Cannot place reduce_only order when no position exists"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+
+            # 确保数值参数为正确的类型
+            try:
+                quantity = int(float(quantity))  # 确保数量是整数
+                price = float(normalized_price)
+                if quantity <= 0 or price <= 0:
+                    raise ValueError("Quantity and price must be positive")
+                logger.info("Converted numeric parameters:")
+                logger.info(f"quantity: {quantity} (type: {type(quantity)})")
+                logger.info(f"price: {price} (type: {type(price)})")
+            except ValueError as e:
+                error_msg = f"Invalid numeric parameters: {str(e)}"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
             
-            logger.info(f"Order placed successfully on {self.env_config['env']}: {response}")
-            return {
-                "status": "success",
-                "order_id": response.get("order_id"),
-                "response": response
-            }
+            # 从 symbol 中提取币种名称（去掉 -USDC 后缀）
+            coin_name = symbol.split('-')[0].upper()  # 确保币种名称大写
+            logger.info(f"Extracted coin_name: {coin_name!r} (type: {type(coin_name)})")
             
+            # 生成唯一的订单ID
+            import uuid
+            import random
+            cloid = Cloid.from_int(random.randint(1, 2**32-1))  # 使用随机整数生成 Cloid
+            logger.info(f"Generated cloid: {cloid!r}")
+            
+            # 确定买卖方向
+            is_buy = side.lower() == "buy"
+            logger.info(f"Determined is_buy: {is_buy!r} (type: {type(is_buy)})")
+            
+            # 检查数量是否小于最小交易量
+            min_size = 1
+            if quantity < min_size:
+                logger.warning(f"Order quantity {quantity} is less than minimum size {min_size}, adjusting to minimum")
+                quantity = min_size
+            
+            try:
+                # 构建下单参数
+                order_params = {
+                    "name": coin_name,
+                    "is_buy": is_buy,
+                    "sz": quantity,
+                    "limit_px": price,
+                    "reduce_only": reduce_only,
+                    "order_type": {"limit": {"tif": "Gtc"}},
+                    "cloid": cloid
+                }
+                logger.info("Final order parameters:")
+                for key, value in order_params.items():
+                    logger.info(f"  {key}: {value!r} (type: {type(value)})")
+                
+                # 使用SDK的order方法下限价单
+                try:
+                    logger.info("Calling exchange.order with parameters:")
+                    logger.info(json.dumps({k: str(v) if isinstance(v, Cloid) else v for k, v in order_params.items()}, indent=2))
+                    response = self.exchange.order(**order_params)
+                    logger.info(f"Raw API Response: {response!r}")
+                    logger.info(f"Response type: {type(response)}")
+                    
+                    if isinstance(response, (list, tuple)):
+                        logger.info(f"Response is sequence type, length: {len(response)}")
+                        logger.info(f"Response elements: {[type(x) for x in response]}")
+                        
+                    if isinstance(response, dict):
+                        logger.info(f"Response keys: {list(response.keys())}")
+                        
+                    # 检查订单状态
+                    if response.get("status") == "ok":
+                        statuses = response.get("response", {}).get("data", {}).get("statuses", [])
+                        logger.info(f"Order statuses: {statuses}")
+                        
+                        if statuses:
+                            status = statuses[0]
+                            if "resting" in status:
+                                logger.info("Order is resting (placed successfully)")
+                                resting_info = status["resting"]
+                                logger.info(f"Resting order details: {resting_info}")
+                            elif "filled" in status:
+                                logger.info("Order was immediately filled")
+                                filled_info = status["filled"]
+                                logger.info(f"Filled order details: {filled_info}")
+                            else:
+                                logger.warning(f"Unexpected status: {status}")
+                                
+                            # 验证订单是否真实存在
+                            order_status = self.info.query_order_by_cloid(self.wallet_address, cloid)
+                            logger.info(f"Order verification by cloid: {order_status}")
+                    else:
+                        logger.error(f"Order placement failed with status: {response.get('status')}")
+                        
+                except Exception as e:
+                    logger.error(f"Error during API call: {str(e)}")
+                    import traceback
+                    logger.error(f"Traceback:\n{traceback.format_exc()}")
+                    raise
+                
+                # 处理响应
+                if isinstance(response, str):
+                    try:
+                        logger.info("Attempting to parse response as JSON string")
+                        response = json.loads(response)
+                        logger.info(f"Parsed JSON response: {response}")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse response as JSON: {str(e)}")
+                        response = {"message": response}
+                
+                if not isinstance(response, dict):
+                    logger.warning(f"Converting non-dict response to dict: {response}")
+                    response = {"message": str(response)}
+                
+                # 检查错误信息
+                error_message = response.get("error") or response.get("message")
+                if error_message and "success" not in str(error_message).lower():
+                    logger.error(f"API returned error: {error_message}")
+                    return {
+                        "status": "error",
+                        "error": str(error_message)
+                    }
+                
+                order_type = "平仓" if reduce_only else "开仓"
+                logger.info(f"Limit order placed successfully: symbol={symbol}, side={side}, type={order_type}, "
+                        f"quantity={quantity}, price={price}, response={response}")
+                
+                # 返回成功响应
+                return {
+                    "status": "success",
+                    "response": response,
+                    "order_info": {
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "price": price,
+                        "reduce_only": reduce_only,
+                        "cloid": cloid  # 直接传递 Cloid 对象
+                    }
+                }
+            except Exception as e:
+                error_msg = f"Error placing limit order: {str(e)}"
+                logger.error(error_msg)
+                import traceback
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
         except Exception as e:
-            error_msg = f"Error placing order on {self.env_config['env']}: {str(e)}"
+            error_msg = f"Error preparing order parameters: {str(e)}"
             logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             return {
                 "status": "error",
                 "error": error_msg
             }
 
-    @timeout_handler
+    def _normalize_price(self, symbol: str, price: float) -> float:
+        """
+        将价格规范化为符合 tick size 的值
+        """
+        try:
+            # 获取市场信息
+            market_info = self.info.meta()
+            if not market_info or "universe" not in market_info:
+                logger.warning("无法获取市场信息，将使用原始价格")
+                return price
+                
+            # 查找对应交易对的信息
+            symbol_base = symbol.split('-')[0] if '-' in symbol else symbol
+            market_data = None
+            for item in market_info["universe"]:
+                if item["name"] == symbol_base:
+                    market_data = item
+                    break
+                    
+            if not market_data:
+                logger.warning(f"无法找到 {symbol} 的市场信息，将使用原始价格")
+                return price
+                
+            # 获取 tick size
+            tick_size = float(market_data.get("tick_size", "0.1"))
+            logger.info(f"获取到 {symbol} 的 tick_size: {tick_size}")
+            
+            # 规范化价格
+            normalized_price = round(price / tick_size) * tick_size
+            
+            # 确保价格有正确的小数位数
+            sz_decimals = len(str(tick_size).split('.')[-1]) if '.' in str(tick_size) else 0
+            if sz_decimals > 0:
+                normalized_price = round(normalized_price, sz_decimals)
+                
+            logger.info(f"价格规范化: 原始价格={price}, tick_size={tick_size}, 规范化后={normalized_price}")
+            return normalized_price
+            
+        except Exception as e:
+            logger.error(f"价格规范化失败: {str(e)}")
+            return price
+
     def get_position(self, symbol):
         """
         获取永续合约持仓信息
@@ -224,7 +592,6 @@ class HyperliquidTrader:
             logger.error(f"Error parsing position data: {str(e)}")
             return {"status": "error", "error": f"Position data parsing error: {str(e)}"}
 
-    @timeout_handler
     def get_positions(self, symbols=None):
         """
         获取多个永续合约的持仓信息
@@ -292,33 +659,48 @@ class HyperliquidTrader:
             logger.error(f"Error getting account info: {str(e)}")
             return {"status": "error", "error": f"Account info error: {str(e)}"}
 
-    def calculate_position_size(self, symbol, price, risk_percentage=1):
+    def calculate_position_size(self, symbol: str, price: float, risk_percentage: float = 1.0) -> dict:
         """
         计算仓位大小
-        :param symbol: 交易对
-        :param price: 当前价格 (USDC)
-        :param risk_percentage: 账户风险百分比（默认1%）
-        :return: 建议的仓位大小
+        :param symbol: 交易对名称
+        :param price: 当前价格
+        :param risk_percentage: 风险百分比（占账户总值的百分比）
+        :return: 计算结果，包含仓位大小等信息
         """
         try:
+            # 获取账户总值
             account_info = self.get_account_info()
             if account_info["status"] != "success":
-                raise Exception("Failed to get account info")
+                return {"status": "error", "error": "Failed to get account value"}
 
-            account_value = Decimal(str(account_info["account_info"]))
-            risk_amount = account_value * Decimal(str(risk_percentage)) / Decimal('100')
-            
-            # 计算合约数量（根据账户价值和风险比例）
-            position_size = risk_amount / Decimal(str(price))
-            
-            # 向下取整到合适的精度
-            position_size = float(position_size.quantize(Decimal('0.001')))
-            
+            # 确保账户总值是浮点数
+            try:
+                account_value = float(account_info["account_info"])
+                risk_percentage = float(risk_percentage)
+                price = float(price)
+            except (TypeError, ValueError) as e:
+                logger.error(f"Invalid numeric value: account_value={account_info['account_info']}, "
+                           f"risk_percentage={risk_percentage}, price={price}")
+                raise ValueError(f"Invalid numeric value: {str(e)}")
+
+            # 计算可用于此次交易的资金（账户总值 * 风险百分比）
+            risk_amount = account_value * (risk_percentage / 100)
+            logger.info(f"Calculated risk amount: {risk_amount} = {account_value} * ({risk_percentage} / 100)")
+
+            # 计算仓位大小（向下取整到整数）
+            position_size = int(risk_amount / price)
+            logger.info(f"Calculated position size: {position_size} = int({risk_amount} / {price})")
+
+            # 确保至少为1
+            if position_size < 1:
+                position_size = 1
+                logger.info(f"Adjusted position size to minimum: {position_size}")
+
             return {
                 "status": "success",
                 "position_size": position_size,
-                "account_value": float(account_value),
-                "risk_amount": float(risk_amount)
+                "account_value": account_value,
+                "risk_amount": risk_amount
             }
             
         except Exception as e:
@@ -329,13 +711,15 @@ class HyperliquidTrader:
                 "error": error_msg
             }
 
-    def close_position(self, symbol):
+    def close_position(self, symbol, price):
         """
         关闭指定交易对的持仓
         :param symbol: 交易对
+        :param price: 平仓价格
         :return: 关闭结果
         """
         try:
+            # 获取当前持仓
             position = self.get_position(symbol)
             if position["status"] != "success":
                 raise Exception("Failed to get position info")
@@ -347,17 +731,22 @@ class HyperliquidTrader:
                 }
 
             pos = position["position"]
+            
+            # 确定平仓方向和数量
             side = "sell" if pos["size"] > 0 else "buy"
             quantity = abs(float(pos["size"]))
-
-            close_order = self.place_order(
+            
+            logger.info(f"Closing position: {symbol} {side} {quantity} @ {price}")
+            
+            # 使用限价单平仓，使用信号指定的价格
+            return self.place_order(
                 symbol=symbol,
                 side=side,
                 quantity=quantity,
-                order_type="MARKET"
+                price=price,
+                order_type="LIMIT",
+                reduce_only=True
             )
-
-            return close_order
 
         except Exception as e:
             error_msg = f"Error closing position: {str(e)}"
@@ -394,27 +783,27 @@ class HyperliquidTrader:
             # 处理当前挂单
             for order in current_orders:
                 order_time = int(time.time() * 1000)  # 当前订单使用当前时间
-                order_symbol = order.get("coin")
+                coin = order.get("coin")  # 从API获取币种代码
                 
                 # 过滤交易对
-                if symbol and order_symbol.upper() != symbol.upper():
+                if symbol and coin.upper() != symbol.upper():
                     continue
                     
                 # 获取合约配置
-                contract_config = self.get_contract_config(order_symbol)
+                contract_config = self.get_contract_config(coin)
                 price_precision = contract_config.get("price_precision", 5)
                 size_precision = contract_config.get("size_precision", 0)
                 
                 formatted_order = {
                     "order_id": order.get("oid"),
-                    "symbol": order_symbol,
+                    "symbol": symbol if symbol else coin,  # 优先使用传入的 symbol
                     "side": "BUY" if order.get("side", 0) > 0 else "SELL",
                     "price": round(float(order.get("px", 0)), price_precision),
-                    "size": round(float(order.get("sz", 0)), size_precision),
+                    "size": int(float(order.get("sz", 0))),  # 确保 size 是整数
                     "status": "PENDING",
                     "type": order.get("orderType", "LIMIT"),
                     "time": datetime.datetime.fromtimestamp(order_time / 1000).strftime('%Y-%m-%d %H:%M:%S'),
-                    "filled_size": round(float(order.get("filled", 0)), size_precision),
+                    "filled_size": int(float(order.get("filled", 0))),  # filled_size 也应该是整数
                     "fee": round(float(order.get("fee", 0)), 8)
                 }
                 
@@ -446,7 +835,7 @@ class HyperliquidTrader:
                         
                         formatted_order = {
                             "order_id": order.get("oid"),
-                            "symbol": order_symbol,
+                            "symbol": symbol if symbol else order_symbol,  # 优先使用传入的 symbol
                             "side": "BUY" if order.get("side") == "B" else "SELL",
                             "price": round(price, price_precision),
                             "size": round(size, size_precision),
@@ -537,4 +926,44 @@ class HyperliquidTrader:
             return {
                 "status": "error",
                 "error": error_msg
+            }
+
+    def _check_margin(self, symbol: str, quantity: int, price: float) -> dict:
+        """
+        检查是否有足够的保证金
+        """
+        try:
+            # 获取账户信息
+            account_info = self.info.user_state(self.wallet_address)
+            if not account_info:
+                return {
+                    "status": "error",
+                    "error": "无法获取账户信息"
+                }
+            
+            # 获取可用保证金
+            available_margin = float(account_info.get("marginSummary", {}).get("accountValue", 0))
+            
+            # 计算所需保证金（这里使用一个简单的估算）
+            required_margin = (price * quantity) / self.default_leverage
+            
+            logger.info(f"保证金检查: 可用={available_margin}, 需要={required_margin}")
+            
+            if available_margin < required_margin:
+                return {
+                    "status": "error",
+                    "error": f"保证金不足。需要: {required_margin}, 可用: {available_margin}"
+                }
+            
+            return {
+                "status": "success",
+                "available_margin": available_margin,
+                "required_margin": required_margin
+            }
+            
+        except Exception as e:
+            logger.error(f"检查保证金时出错: {str(e)}")
+            return {
+                "status": "error",
+                "error": f"检查保证金失败: {str(e)}"
             }

@@ -8,6 +8,7 @@ import json
 from rest_framework.response import Response
 from rest_framework import status
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -37,93 +38,115 @@ def filter_trade_signal(alert_data):
 def place_hyperliquid_order(alert_data):
     """
     处理Hyperliquid交易信号
-    :param alert_data: TradingView信号数据，包含以下字段：
-        - scode: 交易对代码
-        - action: 交易方向 ('buy'/'sell')
-        - price: 交易价格
-        - contractType: 合约类型
+    :param alert_data: TradingView信号数据
     :return: bool 交易是否成功
     """
     try:
-        logger.info(f"开始处理Hyperliquid交易信号: {alert_data.scode} {alert_data.action} @ {alert_data.price}")
+        logger.info(f"收到Hyperliquid交易信号: {alert_data.__dict__}")
         
         # 初始化交易接口
         trader = HyperliquidTrader()
         
-        # 验证交易对是否存在且活跃
-        contract_config = trader.get_contract_config(alert_data.scode)
-        if not contract_config:
-            logger.error(f"交易对 {alert_data.scode} 不存在或未激活")
+        # 获取当前持仓
+        position_result = trader.get_position(alert_data.symbol)
+        if position_result["status"] != "success":
+            logger.info(f"获取持仓信息失败: {position_result.get('error')}")
             return False
             
-        # 标准化交易方向
-        side = alert_data.action.lower()
-        if side not in ['buy', 'sell']:
-            logger.error(f"无效的交易方向: {side}")
-            return False
-            
-        # 获取账户信息，检查是否有足够的资金
-        account_info = trader.get_account_info()
-        if account_info["status"] != "success":
-            logger.error(f"获取账户信息失败: {account_info.get('error')}")
-            return False
-            
-        # 计算建议仓位大小（风险1%）
-        position_calc = trader.calculate_position_size(
-            symbol=alert_data.scode,
-            price=float(alert_data.price),
-            risk_percentage=1
-        )
+        current_position = position_result.get("position")
+        logger.info(f"当前持仓信息: {current_position}")
         
-        if position_calc["status"] != "success":
-            logger.error(f"计算仓位失败: {position_calc.get('error')}")
-            return False
+        # 判断开平仓
+        reduce_only = False
+        if current_position:
+            current_size = current_position.get("size", 0)
+            logger.info(f"当前持仓大小: {current_size}")
             
-        position_size = position_calc["position_size"]
+            # 判断是否需要平仓
+            # 如果当前是多仓(size > 0)且收到sell信号，或者当前是空仓(size < 0)且收到buy信号
+            if (current_size > 0 and alert_data.action == "sell") or \
+               (current_size < 0 and alert_data.action == "buy"):
+                reduce_only = True
+                quantity = abs(current_size)
+                logger.info(f"执行平仓操作: 方向={alert_data.action}, 数量={quantity}")
+            else:
+                # 同向加仓或反向开仓
+                size_result = trader.calculate_position_size(
+                    symbol=alert_data.symbol,
+                    price=float(alert_data.price),
+                    risk_percentage=1
+                )
+                if size_result["status"] != "success":
+                    logger.info(f"计算仓位大小失败: {size_result.get('error')}")
+                    return False
+                quantity = size_result["position_size"]
+                logger.info(f"计算新开仓数量: {quantity}, 方向={alert_data.action}")
+        else:
+            # 无持仓，开新仓
+            size_result = trader.calculate_position_size(
+                symbol=alert_data.symbol,
+                price=float(alert_data.price),
+                risk_percentage=1
+            )
+            if size_result["status"] != "success":
+                logger.info(f"计算仓位大小失败: {size_result.get('error')}")
+                return False
+            quantity = size_result["position_size"]
+            logger.info(f"首次开仓: 方向={alert_data.action}, 数量={quantity}")
         
-        # 检查是否满足最小下单数量
-        min_size = float(contract_config["min_size"])
-        if position_size < min_size:
-            logger.warning(f"计算的仓位 {position_size} 小于最小下单数量 {min_size}，将使用最小下单数量")
-            position_size = min_size
-            
-        # 根据size_precision进行数量精度调整
-        position_size = round(position_size, contract_config["size_precision"])
+        # 下单
+        logger.info(f"准备下单: symbol={alert_data.symbol}, action={alert_data.action}, "
+                   f"quantity={quantity}, price={alert_data.price}, reduce_only={reduce_only}")
         
-        # 下单前检查是否有反向持仓
-        positions = trader.get_positions([alert_data.scode])
-        if positions["status"] == "success" and positions["positions"]:
-            current_position = positions["positions"].get(alert_data.scode)
-            if current_position:
-                current_size = current_position["size"]
-                if (side == "buy" and current_size < 0) or (side == "sell" and current_size > 0):
-                    logger.info(f"检测到反向持仓，先平掉现有仓位")
-                    close_result = trader.close_position(alert_data.scode)
-                    if close_result["status"] != "success":
-                        logger.error(f"平仓失败: {close_result.get('error')}")
-                        return False
-        
-        # 执行下单
         order_response = trader.place_order(
-            symbol=alert_data.scode,
-            side=side,
-            quantity=position_size,
+            symbol=alert_data.symbol,
+            side=alert_data.action,
+            quantity=int(quantity),
             price=float(alert_data.price),
-            order_type="LIMIT"
+            reduce_only=reduce_only
         )
         
         if order_response["status"] == "success":
-            order_info = order_response["response"]
-            logger.info(f"Hyperliquid下单成功: 订单号={order_info.get('order_id')}, "
-                       f"交易对={alert_data.scode}, 方向={side}, "
-                       f"数量={position_size}, 价格={alert_data.price}")
-            return True
+            response_data = order_response.get("response", {})
+            order_info = order_response.get("order_info", {})
+            logger.info(f"下单成功: {order_info}")
+            
+            # 检查订单状态
+            if response_data.get("status") == "ok":
+                statuses = response_data.get("response", {}).get("data", {}).get("statuses", [])
+                logger.info(f"订单状态: {statuses}")
+                
+                if statuses:
+                    status = statuses[0]
+                    if "resting" in status:
+                        logger.info(f"限价单已成功挂单: {order_info}")
+                        return True
+                    elif "filled" in status:
+                        logger.info(f"订单已立即成交: {order_info}")
+                        return True
+                    elif "error" in status:
+                        if "Order price cannot be more than 95% away from the reference price" in status["error"]:
+                            logger.warning(f"委托价格超出范围: {status['error']}")
+                        else:
+                            logger.error(f"订单出错: {status['error']}")
+                        return False
+                    else:
+                        logger.warning(f"未知的订单状态: {status}")
+                        return False
+                else:
+                    logger.info("下单响应中没有状态信息")
+                    return False
+            else:
+                logger.warning(f"下单失败，响应状态异常: {response_data}")
+                return False
         else:
-            logger.error(f"Hyperliquid下单失败: {order_response.get('error')}")
+            logger.warning(f"Hyperliquid下单失败: {order_response.get('error')}")
             return False
             
     except Exception as e:
-        logger.error(f"处理Hyperliquid交易信号时发生错误: {str(e)}", exc_info=True)
+        logger.error(f"处理Hyperliquid交易信号时发生错误: {str(e)}")
+        import traceback
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
         return False
 
 
