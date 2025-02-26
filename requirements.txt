@@ -10,6 +10,7 @@ django-filter==23.5
 django-import-export==4.0.9
 djangorestframework==3.14.0
 djangorestframework-simplejwt==5.3.1
+hyperliquid-python-sdk==1.0.2
 idna==3.6
 importlib-metadata==7.0.1
 itypes==1.2.0
