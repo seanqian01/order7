@@ -42,13 +42,15 @@ def place_hyperliquid_order(alert_data, quantity=None):
     在Hyperliquid交易所下单
     """
     try:
+        logger.info(f"开始处理下单请求: symbol={alert_data.symbol}, action={alert_data.action}, contractType={alert_data.contractType}")
+        
         # 初始化交易接口
         trader = HyperliquidTrader()
         
         # 获取当前持仓
         position_result = trader.get_position(alert_data.symbol)
         if position_result["status"] != "success":
-            logger.info(f"获取持仓信息失败: {position_result.get('error')}")
+            logger.error(f"获取持仓信息失败: {position_result.get('error')}")
             return False
             
         current_position = position_result.get("position")
@@ -58,13 +60,16 @@ def place_hyperliquid_order(alert_data, quantity=None):
         reduce_only = False
         
         # 先查询交易对配置
+        symbol_base = alert_data.symbol.split('-')[0] if '-' in alert_data.symbol else alert_data.symbol
+        logger.info(f"查询交易对配置: {symbol_base}")
+        
         contract = ContractCode.objects.filter(
-            symbol=alert_data.symbol.split('-')[0],  # 使用HYPE而不是HYPE-USDC
+            symbol=symbol_base,
             is_active=True
         ).first()
         
         if not contract:
-            logger.error(f"未找到交易对 {alert_data.symbol} 的配置,请先在后台设置默认下单数量")
+            logger.error(f"未找到交易对 {symbol_base} 的配置,请先在后台设置默认下单数量")
             return False
             
         if current_position:
@@ -174,6 +179,13 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 alert_action = json_data.get('action')
                 time_circle_name = json_data.get('time_circle')  # 获取时间周期名称
 
+                # 添加调试日志
+                logger.info(f"接收到的合约类型: {alert_contractType}, 类型: {type(alert_contractType)}")
+
+                # 确保合约类型是整数
+                alert_contractType = int(alert_contractType)
+                logger.info(f"转换后的合约类型: {alert_contractType}, 类型: {type(alert_contractType)}")
+
                 # 查询或创建对应的 TimeCycle 实例
                 time_circle_instance, created = TimeCycle.objects.get_or_create(name=time_circle_name)
 
@@ -181,16 +193,22 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                     alert_title=alert_title1,
                     symbol=alert_symbol,
                     scode=alert_scode,
-                    contractType=alert_contractType,
+                    contractType=alert_contractType,  # 这里使用转换后的整数
                     price=alert_price,
                     action=alert_action,
                     created_at=timezone.now(),
-                    time_circle=time_circle_instance  # 将 time_circle 字段设置为对应的 TimeCycle 实例
+                    time_circle=time_circle_instance
                 )
                 trading_view_alert_data.save()
 
+                # 添加调试日志
+                logger.info(f"保存到数据库的合约类型: {trading_view_alert_data.contractType}, 类型: {type(trading_view_alert_data.contractType)}")
+
                 # 调用过滤函数
                 response = filter_trade_signal(trading_view_alert_data)
+
+                # 添加调试日志
+                logger.info(f"判断条件: {trading_view_alert_data.contractType == 3}")
 
                 # 根据 HTTP 状态码判断信号有效性
                 if response.status_code == status.HTTP_200_OK:

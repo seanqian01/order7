@@ -65,11 +65,7 @@ class HyperliquidTrader:
             )
             
             # 获取交易所实例
-            try:
-                self.exchange_instance = ExchangeModel.objects.get(code='HYPERLIQUID')
-            except ExchangeModel.DoesNotExist:
-                logger.error("HYPERLIQUID exchange not found in database")
-                self.exchange_instance = None
+            self.exchange_instance = None  # Initialize as None, will be loaded lazily
             
             # WebSocket相关
             self._ws = None
@@ -84,6 +80,17 @@ class HyperliquidTrader:
         except Exception as e:
             logger.error(f"Error initializing HyperliquidTrader: {str(e)}")
             raise
+
+    def get_exchange_instance(self):
+        """
+        Lazily get the exchange instance
+        """
+        if self.exchange_instance is None:
+            try:
+                self.exchange_instance = ExchangeModel.objects.get(code='HYPERLIQUID')
+            except ExchangeModel.DoesNotExist:
+                logger.error("HYPERLIQUID exchange not found in database")
+        return self.exchange_instance
 
     def _ensure_ws_connection(self):
         """

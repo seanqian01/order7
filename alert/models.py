@@ -179,8 +179,6 @@ class Exchange(models.Model):
     name = models.CharField('交易所名称', max_length=50)
     code = models.CharField('交易所代码', max_length=20, unique=True)
     description = models.TextField('描述', blank=True)
-    api_url = models.CharField('API地址', max_length=200)
-    test_api_url = models.CharField('测试API地址', max_length=200, blank=True)
     is_active = models.BooleanField('是否启用', default=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
