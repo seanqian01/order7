@@ -2,13 +2,15 @@ from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
-from alert.models import stra_Alert, TimeCycle
+from alert.models import stra_Alert, TimeCycle, ContractCode, OrderRecord
 from alert.trade.hyperliquid_api import HyperliquidTrader
 import json
 from rest_framework.response import Response
 from rest_framework import status
 import logging
 import time
+from alert.core.ordertask import order_monitor
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +37,11 @@ def filter_trade_signal(alert_data):
     return Response(status=status.HTTP_200_OK, data={'message': 'Valid trade signal, 当前信号有效, 请处理'})
 
 
-def place_hyperliquid_order(alert_data):
+def place_hyperliquid_order(alert_data, quantity=None):
     """
-    处理Hyperliquid交易信号
-    :param alert_data: TradingView信号数据
-    :return: bool 交易是否成功
+    在Hyperliquid交易所下单
     """
     try:
-        logger.info(f"收到Hyperliquid交易信号: {alert_data.__dict__}")
-        
         # 初始化交易接口
         trader = HyperliquidTrader()
         
@@ -58,6 +56,17 @@ def place_hyperliquid_order(alert_data):
         
         # 判断开平仓
         reduce_only = False
+        
+        # 先查询交易对配置
+        contract = ContractCode.objects.filter(
+            symbol=alert_data.symbol.split('-')[0],  # 使用HYPE而不是HYPE-USDC
+            is_active=True
+        ).first()
+        
+        if not contract:
+            logger.error(f"未找到交易对 {alert_data.symbol} 的配置,请先在后台设置默认下单数量")
+            return False
+            
         if current_position:
             current_size = current_position.get("size", 0)
             logger.info(f"当前持仓大小: {current_size}")
@@ -71,28 +80,12 @@ def place_hyperliquid_order(alert_data):
                 logger.info(f"执行平仓操作: 方向={alert_data.action}, 数量={quantity}")
             else:
                 # 同向加仓或反向开仓
-                size_result = trader.calculate_position_size(
-                    symbol=alert_data.symbol,
-                    price=float(alert_data.price),
-                    risk_percentage=1
-                )
-                if size_result["status"] != "success":
-                    logger.info(f"计算仓位大小失败: {size_result.get('error')}")
-                    return False
-                quantity = size_result["position_size"]
-                logger.info(f"计算新开仓数量: {quantity}, 方向={alert_data.action}")
+                quantity = float(contract.default_quantity)
+                logger.info(f"使用交易对默认下单数量: {quantity}")
         else:
             # 无持仓，开新仓
-            size_result = trader.calculate_position_size(
-                symbol=alert_data.symbol,
-                price=float(alert_data.price),
-                risk_percentage=1
-            )
-            if size_result["status"] != "success":
-                logger.info(f"计算仓位大小失败: {size_result.get('error')}")
-                return False
-            quantity = size_result["position_size"]
-            logger.info(f"首次开仓: 方向={alert_data.action}, 数量={quantity}")
+            quantity = float(contract.default_quantity)
+            logger.info(f"使用交易对默认下单数量: {quantity}")
         
         # 下单
         logger.info(f"准备下单: symbol={alert_data.symbol}, action={alert_data.action}, "
@@ -111,33 +104,43 @@ def place_hyperliquid_order(alert_data):
             order_info = order_response.get("order_info", {})
             logger.info(f"下单成功: {order_info}")
             
-            # 检查订单状态
-            if response_data.get("status") == "ok":
-                statuses = response_data.get("response", {}).get("data", {}).get("statuses", [])
-                logger.info(f"订单状态: {statuses}")
+            # 检查订单状态和订单ID
+            if response_data.get("status") == "ok" and order_info.get("order_id"):
+                # 创建订单记录
+                from alert.models import OrderRecord
+                from alert.core.ordertask import order_monitor
+                import threading
                 
-                if statuses:
-                    status = statuses[0]
-                    if "resting" in status:
-                        logger.info(f"限价单已成功挂单: {order_info}")
-                        return True
-                    elif "filled" in status:
-                        logger.info(f"订单已立即成交: {order_info}")
-                        return True
-                    elif "error" in status:
-                        if "Order price cannot be more than 95% away from the reference price" in status["error"]:
-                            logger.warning(f"委托价格超出范围: {status['error']}")
-                        else:
-                            logger.error(f"订单出错: {status['error']}")
-                        return False
-                    else:
-                        logger.warning(f"未知的订单状态: {status}")
-                        return False
-                else:
-                    logger.info("下单响应中没有状态信息")
+                try:
+                    order_record = OrderRecord.objects.create(
+                        order_id=str(order_info["order_id"]),  # 确保转换为字符串
+                        cloid=order_info.get("cloid"),
+                        symbol=alert_data.symbol,
+                        side=alert_data.action,
+                        order_type="limit",
+                        price=alert_data.price,
+                        quantity=quantity,
+                        position_type="close" if reduce_only else "open",
+                        status="SUBMITTED",
+                        filled_quantity=0
+                    )
+                    
+                    # 启动订单监控线程
+                    monitor_thread = threading.Thread(
+                        target=order_monitor.monitor_order,
+                        args=(order_record.id,)
+                    )
+                    monitor_thread.daemon = True  # 设置为守护线程
+                    monitor_thread.start()
+                    
+                    logger.info(f"订单已创建并开始监控: order_id={order_info['order_id']}")
+                    return True
+                    
+                except Exception as e:
+                    logger.error(f"创建订单记录时出错: {str(e)}")
                     return False
             else:
-                logger.warning(f"下单失败，响应状态异常: {response_data}")
+                logger.error(f"下单成功但未获取到订单ID或状态异常: {order_response}")
                 return False
         else:
             logger.warning(f"Hyperliquid下单失败: {order_response.get('error')}")

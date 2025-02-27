@@ -13,7 +13,7 @@ from functools import wraps
 import time
 import json
 import datetime
-from alert.models import Exchange as ExchangeModel, ContractCode
+from alert.models import Exchange as ExchangeModel, ContractCode, OrderRecord
 import websocket
 import threading
 import ssl
@@ -56,8 +56,8 @@ class HyperliquidTrader:
             if self.wallet_address == "":
                 self.wallet_address = self.account.address
             
+            # 初始化Info和Exchange对象
             self.info = Info(self.api_url)
-            # 使用钱包对象初始化交易所
             self.exchange = Exchange(
                 self.account,
                 self.api_url,
@@ -71,77 +71,63 @@ class HyperliquidTrader:
                 logger.error("HYPERLIQUID exchange not found in database")
                 self.exchange_instance = None
             
-            logger.info(f"HyperliquidTrader initialized in {self.env} environment")
-            
-            # 只显示环境信息
-            logger.debug(f"Hyperliquid API已初始化 ({self.env})")
-            
-            # WebSocket连接状态
+            # WebSocket相关
+            self._ws = None
             self._ws_connected = False
             self._ws_lock = threading.Lock()
-            self._init_websocket()
+            self._ws_thread = None
+            self._ws_should_run = False
+            
+            logger.info(f"HyperliquidTrader initialized in {self.env} environment")
+            logger.debug(f"Hyperliquid API已初始化 ({self.env})")
             
         except Exception as e:
             logger.error(f"Error initializing HyperliquidTrader: {str(e)}")
             raise
 
-    def _init_websocket(self):
+    def _ensure_ws_connection(self):
         """
-        初始化WebSocket连接
+        确保WebSocket连接已建立，仅在需要时建立连接
+        """
+        with self._ws_lock:
+            if not self._ws_connected and not self._ws_thread:
+                logger.debug("正在按需建立WebSocket连接")
+                self._ws_should_run = True
+                self._ws_thread = threading.Thread(target=self._ws_connect)
+                self._ws_thread.daemon = True
+                self._ws_thread.start()
+                
+                # 等待连接建立或超时
+                timeout = 5  # 5秒超时
+                start_time = time.time()
+                while not self._ws_connected and time.time() - start_time < timeout:
+                    time.sleep(0.1)
+                
+                if not self._ws_connected:
+                    logger.warning("WebSocket连接未能在预期时间内建立，将继续执行")
+
+    def _ws_connect(self):
+        """
+        建立WebSocket连接
         """
         try:
-            with self._ws_lock:
-                if not self._ws_connected:
-                    # 关闭可能存在的旧连接
-                    if hasattr(self, '_ws'):
-                        try:
-                            self._ws.close()
-                        except:
-                            pass
-                    
-                    # 创建新的WebSocket连接
-                    ws_url = f"wss://{'dev-' if self.env == 'testnet' else ''}api.hyperliquid.xyz/ws"
-                    logger.info(f"正在连接WebSocket: {ws_url}")
-                    
-                    # 创建连接事件
-                    self._ws_connected_event = threading.Event()
-                    
-                    # 创建WebSocket连接
-                    self._ws = websocket.WebSocketApp(
-                        ws_url,
-                        on_open=self._on_ws_open,
-                        on_close=self._on_ws_close,
-                        on_error=self._on_ws_error,
-                        on_message=self._on_ws_message
-                    )
-                    
-                    # 在后台线程中运行WebSocket，调整ping/pong参数
-                    self._ws_thread = threading.Thread(target=lambda: self._ws.run_forever(
-                        sslopt={"cert_reqs": ssl.CERT_NONE},
-                        ping_interval=10,  # 减少ping间隔
-                        ping_timeout=5,    # 减少ping超时
-                        skip_utf8_validation=True
-                    ))
-                    self._ws_thread.daemon = True
-                    self._ws_thread.start()
-                    
-                    # 等待连接建立
-                    if self._ws_connected_event.wait(timeout=10):
-                        logger.info("WebSocket连接成功建立")
-                        self._subscribe_market_data()
-                    else:
-                        logger.warning("WebSocket连接超时，将继续执行订单")
-                        
+            logger.debug(f"正在连接WebSocket: wss://{'dev-' if self.env == 'testnet' else ''}api.hyperliquid.xyz/ws")
+            self._ws = websocket.WebSocketApp(
+                f"wss://{'dev-' if self.env == 'testnet' else ''}api.hyperliquid.xyz/ws",
+                on_open=self._on_ws_open,
+                on_message=self._on_ws_message,
+                on_error=self._on_ws_error,
+                on_close=self._on_ws_close
+            )
+            self._ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE}, ping_interval=30, ping_timeout=10, skip_utf8_validation=True)
         except Exception as e:
-            logger.warning(f"初始化WebSocket连接失败: {str(e)}")
-            import traceback
-            logger.warning(f"Traceback:\n{traceback.format_exc()}")
+            logger.error(f"WebSocket连接出错: {str(e)}")
+            self._ws_connected = False
 
     def _on_ws_open(self, ws):
         """WebSocket连接建立时的回调"""
         with self._ws_lock:
             self._ws_connected = True
-        self._ws_connected_event.set()  # 设置连接成功事件
         logger.info("WebSocket连接已建立")
 
     def _on_ws_close(self, ws, close_status_code, close_msg):
@@ -179,22 +165,6 @@ class HyperliquidTrader:
             logger.info("已发送市场数据订阅请求")
         except Exception as e:
             logger.warning(f"订阅市场数据失败: {str(e)}")
-
-    def _ensure_ws_connection(self):
-        """
-        确保WebSocket连接正常
-        """
-        try:
-            with self._ws_lock:
-                if not self._ws_connected:
-                    logger.info("正在重新建立WebSocket连接...")
-                    self._init_websocket()
-                    if not self._ws_connected:
-                        logger.warning("无法建立WebSocket连接，但将继续执行订单")
-                else:
-                    logger.debug("WebSocket连接正常")
-        except Exception as e:
-            logger.warning(f"检查WebSocket连接状态时出错: {str(e)}")
 
     def get_default_symbols(self):
         """
@@ -239,7 +209,7 @@ class HyperliquidTrader:
 
     @timeout_handler
     def place_order(self, symbol: str, side: str, quantity: int, price: float, 
-                 position_type: str = "open", leverage: int = None):
+                     position_type: str = "open", leverage: int = None, reduce_only: bool = False):
         """
         下限价单
         :param symbol: 交易对名称，例如 "HYPE-USDC"
@@ -254,10 +224,11 @@ class HyperliquidTrader:
         :param price: 交易价格
         :param position_type: 仓位类型，"open"（开仓）或"close"（平仓）
         :param leverage: 杠杆倍数，如果不指定则使用默认杠杆
+        :param reduce_only: 是否只减仓，设置为 True 时订单只会减少持仓
         :return: 下单结果
         """
         try:
-            # 确保WebSocket连接正常
+            # 尝试建立WebSocket连接，但连接失败不影响下单
             self._ensure_ws_connection()
             
             # 规范化价格
@@ -283,10 +254,8 @@ class HyperliquidTrader:
                     "error": "无法获取当前持仓信息"
                 }
                 
-            # 判断是否设置reduce_only
-            reduce_only = False
+            # 检查平仓操作的持仓情况
             if position_type == "close":
-                reduce_only = True
                 # 检查是否有对应方向的持仓
                 symbol_position = current_positions["positions"].get(symbol, {})
                 position_size = float(symbol_position.get("size", 0))
@@ -303,30 +272,13 @@ class HyperliquidTrader:
                         "status": "error",
                         "error": "平仓方向与持仓方向不匹配"
                     }
-            elif position_type == "open":
-                # 检查是否有反向持仓
-                symbol_position = current_positions["positions"].get(symbol, {})
-                position_size = float(symbol_position.get("size", 0))
-                
-                # 如果有反向持仓，提示用户
-                if (side.lower() == "buy" and position_size < 0) or \
-                   (side.lower() == "sell" and position_size > 0):
-                    logger.warning(f"当前已有反向持仓 ({position_size})")
             
             # 生成订单ID
             import time
             cloid = Cloid.from_int(int(time.time() * 1000))  # 使用时间戳作为订单ID
             
-            # 构建订单参数
-            order_params = {
-                "coin": symbol.split('-')[0] if '-' in symbol else symbol,
-                "is_buy": side.lower() == "buy",
-                "sz": quantity,
-                "limit_px": normalized_price,
-                "reduce_only": reduce_only,
-                "order_type": {"limit": {"tif": "Gtc"}},
-                "cloid": cloid
-            }
+            # 获取交易对的基础币种
+            coin = symbol.split('-')[0] if '-' in symbol else symbol
             
             # 记录订单信息
             direction = "多" if side.lower() == "buy" else "空"
@@ -336,10 +288,35 @@ class HyperliquidTrader:
                 
             # 发送订单
             try:
-                response = self.exchange.order(order_params)
+                response = self.exchange.order(
+                    coin,  # 交易对，如 "HYPE"
+                    side.lower() == "buy",  # is_buy
+                    quantity,  # sz
+                    normalized_price,  # limit_px
+                    {"limit": {"tif": "Gtc"}},  # order_type
+                    cloid=cloid,  # 可选的客户端订单ID
+                    reduce_only=reduce_only  # 是否只减仓
+                )
                 logger.info(f"订单响应: {response}")
                 
                 if response.get("status") == "ok":
+                    # 从响应中获取订单ID
+                    order_statuses = response.get("response", {}).get("data", {}).get("statuses", [])
+                    order_id = None
+                    if order_statuses:
+                        status = order_statuses[0]
+                        if "resting" in status:
+                            order_id = status["resting"]["oid"]
+                        elif "filled" in status:
+                            order_id = status["filled"]["oid"]
+                    
+                    if not order_id:
+                        logger.error("下单成功但未获取到订单ID")
+                        return {
+                            "status": "error",
+                            "error": "下单成功但未获取到订单ID"
+                        }
+                    
                     return {
                         "status": "success",
                         "response": response,
@@ -351,7 +328,8 @@ class HyperliquidTrader:
                             "reduce_only": reduce_only,
                             "position_type": position_type,
                             "direction": direction,
-                            "cloid": cloid
+                            "cloid": str(cloid),
+                            "order_id": order_id
                         }
                     }
                 else:
@@ -857,4 +835,203 @@ class HyperliquidTrader:
             return {
                 "status": "error",
                 "error": f"检查保证金失败: {str(e)}"
+            }
+
+    def cancel_order_by_id(self, symbol: str, order_id: int):
+        """
+        通过订单ID撤单
+        :param symbol: 交易对名称，例如 "HYPE-USDC"
+        :param order_id: 订单ID（oid）
+        :return: 撤单结果
+        """
+        try:
+            # 获取资产ID
+            coin = symbol.split('-')[0] if '-' in symbol else symbol
+            
+            # 构造撤单请求
+            # SDK的cancel方法需要coin和order_id，但order_id必须是数字类型
+            order_id_int = int(order_id)  # 确保order_id是整数
+            logger.info(f"发送撤单请求: coin={coin}, order_id={order_id_int}")
+            
+            # 使用SDK的cancel方法
+            response = self.exchange.cancel(coin, order_id_int)
+            logger.info(f"撤单响应: {response}")
+            
+            # 检查响应
+            if response is None:
+                error_msg = "撤单请求无响应"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "error": error_msg
+                }
+                
+            # SDK的响应格式处理
+            if isinstance(response, dict):
+                if "error" not in response:
+                    return {
+                        "status": "success",
+                        "response": response
+                    }
+                else:
+                    error_msg = response.get("error", str(response))
+                    logger.error(f"撤单失败: {error_msg}")
+                    return {
+                        "status": "error",
+                        "error": error_msg
+                    }
+            else:
+                # 如果响应不是字典，说明可能是成功的
+                return {
+                    "status": "success",
+                    "response": response
+                }
+                
+        except Exception as e:
+            error_msg = f"撤单过程中出错: {str(e)}"
+            logger.error(error_msg)
+            logger.exception(e)  # 记录完整的异常堆栈
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+            
+    def cancel_order_by_cloid(self, symbol: str, cloid: str):
+        """
+        通过客户端订单ID撤单
+        :param symbol: 交易对名称，例如 "HYPE-USDC"
+        :param cloid: 客户端订单ID
+        :return: 撤单结果
+        """
+        try:
+            # 获取资产ID
+            coin = symbol.split('-')[0] if '-' in symbol else symbol
+            
+            # 发送撤单请求
+            response = self.exchange.cancel_by_cloid(coin, cloid)
+            logger.info(f"撤单响应: {response}")
+            
+            if response.get("status") == "ok":
+                return {
+                    "status": "success",
+                    "response": response
+                }
+            else:
+                return {
+                    "status": "error",
+                    "error": response.get("error", "Unknown error")
+                }
+                
+        except Exception as e:
+            logger.error(f"撤单过程中出错: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+            
+    def cancel_all_orders(self, symbol: str = None):
+        """
+        撤销所有订单
+        :param symbol: 可选，交易对名称。如果不指定，则撤销所有交易对的订单
+        :return: 撤单结果
+        """
+        try:
+            # 获取当前未成交订单
+            orders = self.get_orders("S")  # 获取当天订单
+            if orders["status"] != "success":
+                return {
+                    "status": "error",
+                    "error": "获取订单列表失败"
+                }
+                
+            cancel_results = []
+            for order in orders["orders"]:
+                # 如果指定了symbol，只撤销该symbol的订单
+                if symbol and order["symbol"] != symbol:
+                    continue
+                    
+                # 只撤销未完全成交的订单
+                if order["status"] in ["NEW", "PARTIALLY_FILLED"]:
+                    result = self.cancel_order_by_id(order["symbol"], order["order_id"])
+                    cancel_results.append({
+                        "symbol": order["symbol"],
+                        "order_id": order["order_id"],
+                        "result": result
+                    })
+            
+            return {
+                "status": "success",
+                "results": cancel_results
+            }
+                
+        except Exception as e:
+            logger.error(f"批量撤单过程中出错: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
+    def place_order_with_management(self, symbol: str, side: str, quantity: float, 
+                              price: float = None, position_type: str = "open",
+                              order_type: str = "limit", reduce_only: bool = False) -> dict:
+        """
+        下单并进行订单管理
+        :param symbol: 交易对名称，例如 "BTC-USDC"
+        :param side: 买卖方向，"buy" 或 "sell"
+        :param quantity: 数量
+        :param price: 价格，市价单可不传
+        :param position_type: 持仓类型，"open" 或 "close"
+        :param order_type: 订单类型，"limit" 或 "market"
+        :param reduce_only: 是否只减仓
+        :return: 下单结果
+        """
+        try:
+            # 下单
+            order_result = self.place_order(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                price=price,
+                position_type=position_type,
+                order_type=order_type,
+                reduce_only=reduce_only
+            )
+            
+            if order_result["status"] != "success":
+                return order_result
+                
+            # 记录订单信息
+            order_info = order_result["order_info"]
+            order_record = OrderRecord.objects.create(
+                order_id=order_info["order_id"],
+                cloid=order_info.get("cloid"),
+                symbol=symbol,
+                side=side,
+                order_type=order_type,
+                price=price if price else 0,
+                quantity=quantity,
+                position_type=position_type,
+                status="SUBMITTED"
+            )
+            
+            # 启动订单监控线程
+            from alert.core.ordertask import order_monitor
+            monitor_thread = threading.Thread(
+                target=order_monitor.monitor_order,
+                args=(order_record.id,)
+            )
+            monitor_thread.daemon = True  # 设置为守护线程
+            monitor_thread.start()
+            
+            return {
+                "status": "success",
+                "order_info": order_info,
+                "record_id": order_record.id
+            }
+            
+        except Exception as e:
+            logger.error(f"下单管理过程中出错: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e)
             }

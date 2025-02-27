@@ -197,6 +197,63 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
 }
 
+# 订单管理配置
+ORDER_MANAGEMENT = {
+    'default': {
+        'retry_interval': 5,    # 订单重试间隔(秒)
+        'cancel_timeout': 60,  # 撤单触发超时时间(秒)
+        'max_retries': 2,      # 最大重试次数
+    },
+}
+
+# 订单监控配置
+ORDER_MONITOR_CONFIG = {
+    'initial_interval': 5,      # 初始检查间隔（秒）
+    'normal_interval': 10,      # 正常检查间隔（秒）
+    'intensive_interval': 2,    # 密集检查间隔（秒）
+    'intensive_threshold': 10,  # 开始密集检查的剩余时间阈值（秒）
+    'max_concurrent': 20,       # 最大并发监控数量
+    'batch_size': 50,          # 批量查询订单数量
+}
+
+import os
+
+# 日志配置
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'order7.log'),
+            'formatter': 'verbose',
+            'mode': 'a',
+        },
+    },
+    'loggers': {
+        'alert': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
+
+# 确保日志目录存在
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
 try:
     from .conf import *
 except ImportError:

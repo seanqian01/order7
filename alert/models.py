@@ -112,14 +112,14 @@ class stra_Order(models.Model):
     filled = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="已成交数量")
     remaining = models.DecimalField(max_digits=18, decimal_places=8, verbose_name="剩余数量")
 
-    ORDER_STATUS_CHOICES = [
-        ('pending', "待处理"),
-        ('partially_filled', "部分成交"),
-        ('filled', "完全成交"),
-        ('cancelled', "已取消"),
-        ('failed', "失败"),
-    ]
-    status = models.CharField(max_length=50, choices=ORDER_STATUS_CHOICES, verbose_name="订单状态")
+    ORDER_STATUS_CHOICES = (
+        ('PENDING', '待处理'),
+        ('SUBMITTED', '已委托'),
+        ('FILLED', '已成交'),
+        ('CANCELLED', '已撤销'),
+        ('FAILED', '失败'),
+    )
+    status = models.CharField(max_length=50, choices=ORDER_STATUS_CHOICES, default='PENDING', verbose_name='订单状态')
 
     timestamp = models.DateTimeField(verbose_name="订单时间")
     POSITION_ACTION_CHOICES = [
@@ -209,6 +209,7 @@ class ContractCode(models.Model):
     size_increment = models.DecimalField('数量增量', max_digits=18, decimal_places=8)
     price_precision = models.IntegerField('价格精度')
     size_precision = models.IntegerField('数量精度')
+    default_quantity = models.DecimalField('默认下单数量', max_digits=18, decimal_places=8, default=1.0)
     is_active = models.BooleanField('是否启用', default=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
@@ -221,3 +222,42 @@ class ContractCode(models.Model):
 
     def __str__(self):
         return f"{self.exchange.name} - {self.name} ({self.get_product_type_display()})"
+
+
+class OrderRecord(models.Model):
+    """订单记录表"""
+    ORDER_STATUS = (
+        ('PENDING', '等待中'),
+        ('SUBMITTED', '已提交'),
+        ('FILLED', '已成交'),
+        ('PARTIALLY_FILLED', '部分成交'),
+        ('CANCELLED', '已撤销'),
+        ('FAILED', '失败'),
+    )
+
+    order_id = models.CharField(max_length=100, unique=True, help_text="订单ID")
+    cloid = models.CharField(max_length=100, null=True, help_text="客户端订单ID")
+    symbol = models.CharField(max_length=20, help_text="交易对")
+    side = models.CharField(max_length=10, help_text="买卖方向")
+    order_type = models.CharField(max_length=20, help_text="订单类型")
+    price = models.DecimalField(max_digits=20, decimal_places=8, help_text="价格")
+    quantity = models.DecimalField(max_digits=20, decimal_places=8, help_text="数量")
+    position_type = models.CharField(max_length=20, help_text="持仓类型(open/close)")
+    status = models.CharField(max_length=20, choices=ORDER_STATUS, default='PENDING', help_text="订单状态")
+    filled_quantity = models.DecimalField(max_digits=20, decimal_places=8, default=0, help_text="已成交数量")
+    retry_count = models.IntegerField(default=0, help_text="重试次数")
+    last_retry_time = models.DateTimeField(null=True, help_text="最后重试时间")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'order_record'
+        verbose_name = '订单记录'
+        verbose_name_plural = '订单记录'
+        indexes = [
+            models.Index(fields=['symbol', 'created_at']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.symbol} - {self.order_id}"
