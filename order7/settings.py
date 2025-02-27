@@ -201,7 +201,7 @@ REST_FRAMEWORK = {
 ORDER_MANAGEMENT = {
     'default': {
         'retry_interval': 5,    # 订单重试间隔(秒)
-        'cancel_timeout': 60,  # 撤单触发超时时间(秒)
+        'cancel_timeout': 180,  # 撤单触发超时时间(秒)
         'max_retries': 2,      # 最大重试次数
     },
 }

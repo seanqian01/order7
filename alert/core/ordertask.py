@@ -23,8 +23,8 @@ class OrderMonitor:
     def get_config(self) -> dict:
         """获取配置"""
         return {
-            'cancel_timeout': settings.HYPERLIQUID_CONFIG.get('cancel_timeout', 60),
-            'retry_interval': settings.HYPERLIQUID_CONFIG.get('retry_interval', 5),
+            'cancel_timeout': settings.ORDER_MANAGEMENT['default']['cancel_timeout'],
+            'retry_interval': settings.ORDER_MANAGEMENT['default']['retry_interval'],
             'monitor': settings.ORDER_MONITOR_CONFIG
         }
 
