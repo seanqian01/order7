@@ -238,9 +238,13 @@ class HyperliquidTrader:
             # 尝试建立WebSocket连接，但连接失败不影响下单
             self._ensure_ws_connection()
             
-            # 规范化价格
-            normalized_price = self._normalize_price(symbol, price)
-            logger.info(f"Using normalized price: {normalized_price} (original: {price})")
+            # 检查订单最小价值
+            order_value = quantity * price
+            if order_value < 10:
+                return {
+                    "status": "error",
+                    "error": f"订单价值（{order_value:.2f} USDC）低于交易所最小要求（10 USDC）"
+                }
             
             # 设置杠杆
             actual_leverage = leverage if leverage is not None else self.default_leverage
@@ -290,7 +294,7 @@ class HyperliquidTrader:
             # 记录订单信息
             direction = "多" if side.lower() == "buy" else "空"
             action = "开仓" if position_type == "open" else "平仓"
-            logger.info(f"准备{action}{direction}单: {quantity}张 @ {normalized_price} USDC")
+            logger.info(f"准备{action}{direction}单: {quantity}张 @ {price} USDC")
             logger.info(f"订单参数: leverage={actual_leverage}, reduce_only={reduce_only}")
                 
             # 发送订单
@@ -299,7 +303,7 @@ class HyperliquidTrader:
                     coin,  # 交易对，如 "HYPE"
                     side.lower() == "buy",  # is_buy
                     quantity,  # sz
-                    normalized_price,  # limit_px
+                    price,  # limit_px
                     {"limit": {"tif": "Gtc"}},  # order_type
                     cloid=cloid,  # 可选的客户端订单ID
                     reduce_only=reduce_only  # 是否只减仓
@@ -307,8 +311,17 @@ class HyperliquidTrader:
                 logger.info(f"订单响应: {response}")
                 
                 if response.get("status") == "ok":
-                    # 从响应中获取订单ID
+                    # 检查是否有错误信息
                     order_statuses = response.get("response", {}).get("data", {}).get("statuses", [])
+                    if order_statuses and "error" in order_statuses[0]:
+                        error_msg = order_statuses[0]["error"]
+                        logger.error(f"下单失败: {error_msg}")
+                        return {
+                            "status": "error",
+                            "error": error_msg
+                        }
+                    
+                    # 从响应中获取订单ID
                     order_id = None
                     if order_statuses:
                         status = order_statuses[0]
@@ -331,7 +344,7 @@ class HyperliquidTrader:
                             "symbol": symbol,
                             "side": side,
                             "quantity": quantity,
-                            "price": normalized_price,
+                            "price": price,
                             "reduce_only": reduce_only,
                             "position_type": position_type,
                             "direction": direction,
@@ -358,48 +371,6 @@ class HyperliquidTrader:
                 "status": "error",
                 "error": str(e)
             }
-
-    def _normalize_price(self, symbol: str, price: float) -> float:
-        """
-        将价格规范化为符合 tick size 的值
-        """
-        try:
-            # 获取市场信息
-            market_info = self.info.meta()
-            if not market_info or "universe" not in market_info:
-                logger.warning("无法获取市场信息，将使用原始价格")
-                return price
-                
-            # 查找对应交易对的信息
-            symbol_base = symbol.split('-')[0] if '-' in symbol else symbol
-            market_data = None
-            for item in market_info["universe"]:
-                if item["name"] == symbol_base:
-                    market_data = item
-                    break
-                    
-            if not market_data:
-                logger.warning(f"无法找到 {symbol} 的市场信息，将使用原始价格")
-                return price
-                
-            # 获取 tick size
-            tick_size = float(market_data.get("tick_size", "0.1"))
-            logger.info(f"获取到 {symbol} 的 tick_size: {tick_size}")
-            
-            # 规范化价格
-            normalized_price = round(price / tick_size) * tick_size
-            
-            # 确保价格有正确的小数位数
-            sz_decimals = len(str(tick_size).split('.')[-1]) if '.' in str(tick_size) else 0
-            if sz_decimals > 0:
-                normalized_price = round(normalized_price, sz_decimals)
-                
-            logger.info(f"价格规范化: 原始价格={price}, tick_size={tick_size}, 规范化后={normalized_price}")
-            return normalized_price
-            
-        except Exception as e:
-            logger.error(f"价格规范化失败: {str(e)}")
-            return price
 
     def get_position(self, symbol):
         """
