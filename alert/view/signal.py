@@ -1,4 +1,3 @@
-from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -11,6 +10,7 @@ import logging
 import time
 from alert.core.ordertask import order_monitor
 import threading
+from alert.trade.hyper_order import place_hyperliquid_order
 
 logger = logging.getLogger(__name__)
 
@@ -37,127 +37,6 @@ def filter_trade_signal(alert_data):
     return Response(status=status.HTTP_200_OK, data={'message': 'Valid trade signal, 当前信号有效, 请处理'})
 
 
-def place_hyperliquid_order(alert_data, quantity=None):
-    """
-    在Hyperliquid交易所下单
-    """
-    try:
-        logger.info(f"开始处理下单请求: symbol={alert_data.symbol}, action={alert_data.action}, contractType={alert_data.contractType}")
-        
-        # 初始化交易接口
-        trader = HyperliquidTrader()
-        
-        # 获取当前持仓
-        position_result = trader.get_position(alert_data.symbol)
-        if position_result["status"] != "success":
-            logger.error(f"获取持仓信息失败: {position_result.get('error')}")
-            return False
-            
-        current_position = position_result.get("position")
-        logger.info(f"当前持仓信息: {current_position}")
-        
-        # 判断开平仓
-        reduce_only = False
-        
-        # 先查询交易对配置
-        symbol_base = alert_data.symbol.split('-')[0] if '-' in alert_data.symbol else alert_data.symbol
-        logger.info(f"查询交易对配置: {symbol_base}")
-        
-        contract = ContractCode.objects.filter(
-            symbol=symbol_base,
-            is_active=True
-        ).first()
-        
-        if not contract:
-            logger.error(f"未找到交易对 {symbol_base} 的配置,请先在后台设置默认下单数量")
-            return False
-            
-        if current_position:
-            current_size = current_position.get("size", 0)
-            logger.info(f"当前持仓大小: {current_size}")
-            
-            # 判断是否需要平仓
-            # 如果当前是多仓(size > 0)且收到sell信号，或者当前是空仓(size < 0)且收到buy信号
-            if (current_size > 0 and alert_data.action == "sell") or \
-               (current_size < 0 and alert_data.action == "buy"):
-                reduce_only = True
-                quantity = abs(current_size)
-                logger.info(f"执行平仓操作: 方向={alert_data.action}, 数量={quantity}")
-            else:
-                # 同向加仓或反向开仓
-                quantity = float(contract.default_quantity)
-                logger.info(f"使用交易对默认下单数量: {quantity}")
-        else:
-            # 无持仓，开新仓
-            quantity = float(contract.default_quantity)
-            logger.info(f"使用交易对默认下单数量: {quantity}")
-        
-        # 下单
-        logger.info(f"准备下单: symbol={alert_data.symbol}, action={alert_data.action}, "
-                   f"quantity={quantity}, price={alert_data.price}, reduce_only={reduce_only}")
-        
-        order_response = trader.place_order(
-            symbol=alert_data.symbol,
-            side=alert_data.action,
-            quantity=int(quantity),
-            price=float(alert_data.price),
-            reduce_only=reduce_only
-        )
-        
-        if order_response["status"] == "success":
-            response_data = order_response.get("response", {})
-            order_info = order_response.get("order_info", {})
-            logger.info(f"下单成功: {order_info}")
-            
-            # 检查订单状态和订单ID
-            if response_data.get("status") == "ok" and order_info.get("order_id"):
-                # 创建订单记录
-                from alert.models import OrderRecord
-                from alert.core.ordertask import order_monitor
-                import threading
-                
-                try:
-                    order_record = OrderRecord.objects.create(
-                        order_id=str(order_info["order_id"]),  # 确保转换为字符串
-                        cloid=order_info.get("cloid"),
-                        symbol=alert_data.symbol,
-                        side=alert_data.action,
-                        order_type="limit",
-                        price=alert_data.price,
-                        quantity=quantity,
-                        position_type="close" if reduce_only else "open",
-                        status="SUBMITTED",
-                        filled_quantity=0
-                    )
-                    
-                    # 启动订单监控线程
-                    monitor_thread = threading.Thread(
-                        target=order_monitor.monitor_order,
-                        args=(order_record.id,)
-                    )
-                    monitor_thread.daemon = True  # 设置为守护线程
-                    monitor_thread.start()
-                    
-                    logger.info(f"订单已创建并开始监控: order_id={order_info['order_id']}")
-                    return True
-                    
-                except Exception as e:
-                    logger.error(f"创建订单记录时出错: {str(e)}")
-                    return False
-            else:
-                logger.error(f"下单成功但未获取到订单ID或状态异常: {order_response}")
-                return False
-        else:
-            logger.warning(f"Hyperliquid下单失败: {order_response.get('error')}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"处理Hyperliquid交易信号时发生错误: {str(e)}")
-        import traceback
-        logger.error(f"Traceback:\n{traceback.format_exc()}")
-        return False
-
-
 @csrf_exempt
 def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
     if request.method == 'POST':
@@ -179,12 +58,9 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 alert_action = json_data.get('action')
                 time_circle_name = json_data.get('time_circle')  # 获取时间周期名称
 
-                # 添加调试日志
-                logger.info(f"接收到的合约类型: {alert_contractType}, 类型: {type(alert_contractType)}")
-
                 # 确保合约类型是整数
                 alert_contractType = int(alert_contractType)
-                logger.info(f"转换后的合约类型: {alert_contractType}, 类型: {type(alert_contractType)}")
+                logger.info(f"处理交易信号: symbol={alert_symbol}, action={alert_action}, contractType={alert_contractType}, price={alert_price}")
 
                 # 查询或创建对应的 TimeCycle 实例
                 time_circle_instance, created = TimeCycle.objects.get_or_create(name=time_circle_name)
@@ -193,7 +69,7 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                     alert_title=alert_title1,
                     symbol=alert_symbol,
                     scode=alert_scode,
-                    contractType=alert_contractType,  # 这里使用转换后的整数
+                    contractType=alert_contractType,
                     price=alert_price,
                     action=alert_action,
                     created_at=timezone.now(),
@@ -201,14 +77,8 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 )
                 trading_view_alert_data.save()
 
-                # 添加调试日志
-                logger.info(f"保存到数据库的合约类型: {trading_view_alert_data.contractType}, 类型: {type(trading_view_alert_data.contractType)}")
-
                 # 调用过滤函数
                 response = filter_trade_signal(trading_view_alert_data)
-
-                # 添加调试日志
-                logger.info(f"判断条件: {trading_view_alert_data.contractType == 3}")
 
                 # 根据 HTTP 状态码判断信号有效性
                 if response.status_code == status.HTTP_200_OK:

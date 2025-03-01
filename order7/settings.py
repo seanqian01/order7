@@ -201,7 +201,7 @@ REST_FRAMEWORK = {
 ORDER_MANAGEMENT = {
     'default': {
         'retry_interval': 5,    # 订单重试间隔(秒)
-        'cancel_timeout': 180,  # 撤单触发超时时间(秒)
+        'cancel_timeout': 60,  # 撤单触发超时时间(秒)
         'max_retries': 2,      # 最大重试次数
     },
 }
@@ -234,10 +234,12 @@ LOGGING = {
             'formatter': 'verbose',
         },
         'file': {
-            'class': 'logging.FileHandler',
+            'class': 'logs.log.ReverseLogHandler',
             'filename': os.path.join(BASE_DIR, 'logs', 'order7.log'),
             'formatter': 'verbose',
-            'mode': 'a',
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 5,
+            'encoding': 'utf8',
         },
     },
     'loggers': {
