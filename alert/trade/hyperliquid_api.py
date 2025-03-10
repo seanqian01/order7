@@ -13,12 +13,25 @@ from functools import wraps
 import time
 import json
 import datetime
+import sys
 from alert.models import Exchange as ExchangeModel, ContractCode, OrderRecord
 import websocket
 import threading
 import ssl
 
 logger = logging.getLogger(__name__)
+
+def is_migration_command():
+    """
+    检查当前执行的命令是否为数据库迁移相关命令
+    
+    Returns:
+        bool: 如果当前命令是 makemigrations 或 migrate，返回 True，否则返回 False
+    """
+    for arg in sys.argv:
+        if 'makemigrations' in arg or 'migrate' in arg:
+            return True
+    return False
 
 def timeout_handler(func):
     @wraps(func)
@@ -41,6 +54,21 @@ class HyperliquidTrader:
         """
         初始化交易接口
         """
+        # 检查是否为迁移命令
+        if is_migration_command():
+            logger.info("迁移命令期间跳过 HyperliquidTrader 初始化")
+            # 设置基本属性，但不进行实际的初始化
+            self.account = None
+            self.info = None
+            self.exchange = None
+            self.exchange_instance = None
+            self._ws = None
+            self._ws_connected = False
+            self._ws_lock = None
+            self._ws_thread = None
+            self._ws_should_run = False
+            return
+            
         try:
             # 配置
             self.env = settings.HYPERLIQUID_CONFIG.get('env', 'mainnet')
