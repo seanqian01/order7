@@ -204,22 +204,23 @@ class ContractCode(models.Model):
     description = models.CharField('描述', max_length=100, blank=True)
     product_type = models.CharField('产品类型', max_length=20, choices=PRODUCT_TYPES, default='perpetual')
     min_size = models.DecimalField('最小下单数量', max_digits=18, decimal_places=8)
-    size_increment = models.DecimalField('数量增量', max_digits=18, decimal_places=8)
+    size_increment = models.IntegerField('数量增量', default=1)
     price_precision = models.IntegerField('价格精度')
     size_precision = models.IntegerField('数量精度')
-    default_quantity = models.DecimalField('默认下单数量', max_digits=18, decimal_places=8, default=1.0)
+    default_quantity = models.DecimalField('默认下单数量', max_digits=18, decimal_places=5, default=1.0)
+    stop_loss_percentage = models.DecimalField('止损百分比', max_digits=5, decimal_places=1, default=10.0, help_text='止损百分比，默认为10%')
     is_active = models.BooleanField('是否启用', default=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    def __str__(self):
+        return f"{self.exchange.name} - {self.name} ({self.get_product_type_display()})"
 
     class Meta:
         verbose_name = '交易对'
         verbose_name_plural = verbose_name
         unique_together = ['exchange', 'symbol']
         ordering = ['exchange', 'symbol']
-
-    def __str__(self):
-        return f"{self.exchange.name} - {self.name} ({self.get_product_type_display()})"
 
 
 class OrderRecord(models.Model):

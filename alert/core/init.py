@@ -67,7 +67,8 @@ def initialize_channels(force=False):
     try:
         # 这里添加渠道初始化的代码
         # 例如：初始化 HyperliquidTrader 等
-        logger.debug("渠道初始化成功完成")
+        if not is_migration_command():
+            logger.info("渠道初始化成功完成")
         return True
     except Exception as e:
         logger.error(f"渠道初始化失败: {str(e)}")
@@ -99,7 +100,6 @@ def patch_hyperliquid_trader():
     修改其初始化方法。
     """
     if not is_migration_command():
-        logger.debug("非迁移命令，不需要修补 HyperliquidTrader")
         return
     
     try:

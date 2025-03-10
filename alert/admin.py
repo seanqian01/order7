@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.http import HttpRequest
-from alert.models import stra_Alert, Strategy, Merchant, User, Exchange, ContractCode, ContractCode
+from alert.models import stra_Alert, Strategy, Merchant, User, Exchange, ContractCode
 from django.contrib.auth.admin import UserAdmin
 import logging
 from import_export.admin import ImportExportModelAdmin, ExportActionModelAdmin
@@ -146,11 +146,10 @@ class ExchangeAdmin(admin.ModelAdmin):
 
 @admin.register(ContractCode)
 class ContractCodeAdmin(admin.ModelAdmin):
-    list_display = ['symbol', 'exchange', 'name', 'product_type', 'price_precision', 'size_precision', 'is_active']
+    list_display = ['symbol', 'exchange', 'name', 'product_type', 'min_size', 'size_increment', 'price_precision', 'size_precision', 'is_active']
     list_filter = ['exchange', 'product_type', 'is_active']
     search_fields = ['symbol', 'name']
     raw_id_fields = ['exchange']
-
 
 admin.site.register(Strategy, StrategyAdmin)
 
