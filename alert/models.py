@@ -242,6 +242,7 @@ class OrderRecord(models.Model):
     price = models.DecimalField(max_digits=20, decimal_places=8, help_text="价格")
     quantity = models.DecimalField(max_digits=20, decimal_places=8, help_text="数量")
     position_type = models.CharField(max_length=20, help_text="持仓类型(open/close)")
+    is_stop_loss = models.BooleanField(default=False, help_text="是否为止损单")
     status = models.CharField(max_length=20, choices=ORDER_STATUS, default='PENDING', help_text="订单状态")
     filled_quantity = models.DecimalField(max_digits=20, decimal_places=8, default=0, help_text="已成交数量")
     retry_count = models.IntegerField(default=0, help_text="重试次数")
