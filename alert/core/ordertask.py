@@ -295,12 +295,14 @@ class OrderMonitor:
                     return True
                 else:
                     logger.error(f"止损单报错: {message}")
+                    # 即使止损单下单失败，也应该结束当前订单的监控，因为主订单已经成交
+                    return True
         
         except Exception as e:
             logger.error(f"处理已成交订单时出错: {str(e)}")
             logger.exception(e)
-        
-        return True  # 默认返回 True，表示结束监控线程
+            # 发生异常时也应该结束监控线程，因为继续监控可能会导致重复处理
+            return True
 
     def check_pending_orders(self) -> None:
         """

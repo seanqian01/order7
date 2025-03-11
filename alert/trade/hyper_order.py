@@ -222,15 +222,7 @@ def place_stop_loss_order(original_order_record):
                     is_stop_loss=True  # 标记为止损单
                 )
                 
-                # 启动止损单监控线程
-                monitor_thread = threading.Thread(
-                    target=order_monitor.monitor_order,
-                    args=(stop_loss_record.id,)
-                )
-                monitor_thread.daemon = True
-                monitor_thread.start()
-                
-                success_msg = f"止损单已创建并开始监控: order_id={order_info['order_id']}"
+                success_msg = f"止损单已创建: order_id={order_info['order_id']}"
                 logger.info(success_msg)
                 return True, success_msg
                 
