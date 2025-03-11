@@ -104,7 +104,7 @@ class OrderMonitor:
             try:
                 # 获取订单记录
                 order_record = OrderRecord.objects.get(id=order_record_id)
-                logger.info(f"开始监控订单: {order_record.order_id}, 委托时间: {order_record.created_at}")
+                logger.info(f"开始监控订单: {order_record.order_id}, 委托时间: {order_record.create_time}")
                 
                 # 获取配置
                 config = self.get_config()
@@ -112,56 +112,114 @@ class OrderMonitor:
                 cancel_timeout = config['cancel_timeout']
                 
                 start_time = datetime.datetime.now()
-                logger.info(f"订单监控开始时间: {start_time}, 超时时间: {cancel_timeout}秒")
+                logger.debug(f"订单监控开始时间: {start_time}, 超时时间: {cancel_timeout}秒")
                 
                 cancel_retry_count = 0
                 max_cancel_retries = 2
                 current_interval = monitor_config['initial_interval']
                 
-                # 初始状态检查
-                initial_status = self._get_order_status_batch([(order_record.symbol, order_record.order_id)]).get(order_record.order_id)
+                # 初始状态检查 - 使用新的直接查询方法
+                initial_status = self.trader.get_order_status(order_record.symbol, order_record.order_id)
                 if initial_status and initial_status["status"] == "success":
-                    order_record.status = "SUBMITTED"
-                    order_record.save()
-                    logger.info(f"订单 {order_record.order_id} 已确认提交")
+                    if initial_status["order_status"] == "FILLED":
+                        # 订单已成交，直接处理成交逻辑
+                        order_record.status = "FILLED"
+                        order_record.filled_quantity = initial_status["filled_quantity"]
+                        order_record.save()
+                        logger.info(f"订单 {order_record.order_id} 已成交: {initial_status['filled_quantity']}张")
+                        
+                        # 处理成交后的逻辑
+                        should_end_monitor = self._handle_filled_order(order_record)
+                        if should_end_monitor:
+                            logger.info(f"订单 {order_record.order_id} 处理完成，结束监控线程")
+                            return
+                        else:
+                            logger.info(f"订单 {order_record.order_id} 成交后继续监控")
+                        
+                    elif initial_status["order_status"] in ["PENDING", "PARTIALLY_FILLED"]:
+                        order_record.status = "SUBMITTED"
+                        if initial_status["order_status"] == "PARTIALLY_FILLED":
+                            order_record.filled_quantity = initial_status["filled_quantity"]
+                        order_record.save()
+                        logger.info(f"订单 {order_record.order_id} 已确认提交，状态: {initial_status['order_status']}")
+                
+                # 记录上次状态，用于检测状态变化
+                last_status = initial_status["order_status"] if initial_status and initial_status["status"] == "success" else "UNKNOWN"
+                last_filled = initial_status["filled_quantity"] if initial_status and initial_status["status"] == "success" else 0
+                status_check_count = 0
                 
                 # 本地计时监控
                 while True:
                     current_time = datetime.datetime.now()
                     elapsed_time = (current_time - start_time).total_seconds()
                     remaining_time = cancel_timeout - elapsed_time
+                    status_check_count += 1
                     
                     # 动态调整检查间隔
                     if remaining_time <= monitor_config['intensive_threshold']:
                         current_interval = monitor_config['intensive_interval']
-                        logger.info(f"订单 {order_record.order_id} 接近超时，切换到密集检查模式")
+                        if status_check_count % 5 == 0:  # 每5次检查才记录一次日志
+                            logger.debug(f"订单 {order_record.order_id} 接近超时，切换到密集检查模式")
                     else:
                         current_interval = monitor_config['normal_interval']
                     
-                    # 获取订单状态（批量查询）
-                    order_status = self._get_order_status_batch([(order_record.symbol, order_record.order_id)]).get(order_record.order_id)
+                    # 使用新的直接查询方法获取订单状态
+                    order_status = self.trader.get_order_status(order_record.symbol, order_record.order_id)
                     
                     if order_status and order_status["status"] == "success":
-                        filled_quantity = order_status.get("filled_quantity", 0)
-                        if filled_quantity > 0:
-                            order_record.status = "FILLED"
-                            order_record.filled_quantity = filled_quantity
-                            order_record.save()
-                            logger.info(f"订单 {order_record.order_id} 已成交: {filled_quantity}张")
-                            break
+                        current_status = order_status["order_status"]
+                        current_filled = order_status.get("filled_quantity", 0)
+                        
+                        # 只有在状态变化时才记录详细日志
+                        status_changed = current_status != last_status
+                        filled_changed = current_filled != last_filled
+                        
+                        if status_changed or filled_changed:
+                            if current_status == "FILLED":
+                                order_record.status = "FILLED"
+                                order_record.filled_quantity = current_filled
+                                order_record.save()
+                                logger.info(f"订单 {order_record.order_id} 已成交: {current_filled}张")
+                                
+                                # 处理成交后的逻辑
+                                should_end_monitor = self._handle_filled_order(order_record)
+                                if should_end_monitor:
+                                    logger.info(f"订单 {order_record.order_id} 处理完成，结束监控线程")
+                                    break
+                                else:
+                                    logger.info(f"订单 {order_record.order_id} 成交后继续监控")
+                                
+                            elif current_status == "PARTIALLY_FILLED":
+                                order_record.status = "PARTIALLY_FILLED"
+                                order_record.filled_quantity = current_filled
+                                order_record.save()
+                                logger.info(f"订单 {order_record.order_id} 部分成交: {current_filled}张")
+                            elif status_changed:
+                                logger.info(f"订单 {order_record.order_id} 状态变化: {last_status} -> {current_status}")
+                        
+                        # 更新上次状态
+                        last_status = current_status
+                        last_filled = current_filled
                     
                     # 检查是否需要撤单
-                    if elapsed_time > cancel_timeout:
-                        logger.info(f"订单 {order_record.order_id} 已超时 {elapsed_time}秒，准备撤单")
+                    if elapsed_time > cancel_timeout and not order_record.is_stop_loss:
+                        logger.info(f"订单 {order_record.order_id} 已超时 {elapsed_time:.1f}秒，准备撤单")
                         
                         # 撤单前再次检查状态
-                        final_check = self._get_order_status_batch([(order_record.symbol, order_record.order_id)]).get(order_record.order_id)
-                        if final_check and final_check.get("filled_quantity", 0) > 0:
+                        final_check = self.trader.get_order_status(order_record.symbol, order_record.order_id)
+                        if final_check and final_check["status"] == "success" and final_check["order_status"] == "FILLED":
                             order_record.status = "FILLED"
                             order_record.filled_quantity = final_check["filled_quantity"]
                             order_record.save()
                             logger.info(f"订单 {order_record.order_id} 在撤单前发现已成交")
-                            break
+                            
+                            # 处理成交后的逻辑
+                            should_end_monitor = self._handle_filled_order(order_record)
+                            if should_end_monitor:
+                                logger.info(f"订单 {order_record.order_id} 处理完成，结束监控线程")
+                                break
+                            else:
+                                logger.info(f"订单 {order_record.order_id} 成交后继续监控")
                         
                         # 执行撤单
                         while cancel_retry_count < max_cancel_retries:
@@ -176,26 +234,73 @@ class OrderMonitor:
                             error_msg = cancel_result.get('error', 'Unknown error')
                             logger.error(f"订单 {order_record.order_id} 撤单失败 (第{cancel_retry_count}次): {error_msg}")
                             
-                            if cancel_retry_count >= max_cancel_retries:
-                                order_record.status = "FAILED"
-                                order_record.save()
-                                logger.error(f"订单 {order_record.order_id} 已达到最大撤单重试次数 ({max_cancel_retries})")
-                                return
-                            
-                            time.sleep(current_interval)
+                            # 如果撤单失败，等待一段时间后重试
+                            time.sleep(config['retry_interval'])
+                        
+                        # 如果所有撤单尝试都失败
+                        logger.error(f"订单 {order_record.order_id} 撤单失败，已达到最大重试次数")
+                        break
                     
+                    # 等待下一次检查
                     time.sleep(current_interval)
                     
+                    # 每10次检查输出一次调试信息
+                    if status_check_count % 10 == 0:
+                        logger.debug(f"订单 {order_record.order_id} 监控中: 已经过{elapsed_time:.1f}秒，状态={last_status}")
+                
+            except OrderRecord.DoesNotExist:
+                logger.error(f"订单记录不存在: ID={order_record_id}")
+            except Exception as e:
+                logger.error(f"监控订单时出错: {str(e)}")
+                logger.exception(e)
             finally:
-                # 释放并发计数
+                # 减少并发计数
                 with self._monitor_lock:
                     self._monitor_count -= 1
-                
-        except OrderRecord.DoesNotExist:
-            logger.error(f"订单记录不存在: {order_record_id}")
+                    
         except Exception as e:
-            logger.error(f"监控订单状态时出错: {str(e)}")
+            logger.error(f"订单监控线程异常: {str(e)}")
             logger.exception(e)
+
+    def _handle_filled_order(self, order_record):
+        """
+        处理已成交订单的后续操作
+        :param order_record: 订单记录对象
+        :return: 如果返回 True，表示应该结束监控线程
+        """
+        try:
+            logger.info(f"处理已成交订单: {order_record.order_id}")
+            
+            # 判断是开仓还是平仓订单
+            if order_record.reduce_only:
+                # 平仓订单成交
+                if order_record.is_stop_loss:
+                    logger.info(f"止损单 {order_record.order_id} 已成交，完成下单策略")
+                else:
+                    logger.info(f"平仓订单 {order_record.order_id} 已成交，完成下单策略")
+                # 不需要再轮询订单状态，也不需要走撤单策略
+                return True
+            else:
+                # 开仓订单成交，需要下止损单
+                logger.info(f"开仓订单 {order_record.order_id} 已成交，准备下止损单")
+                
+                # 导入止损单下单函数
+                from alert.trade.hyper_order import place_stop_loss_order
+                
+                # 下止损单
+                success, message = place_stop_loss_order(order_record)
+                if success:
+                    logger.info(f"止损单已完成: {message}")
+                    # 止损单已成功委托，结束原订单的监控线程
+                    return True
+                else:
+                    logger.error(f"止损单报错: {message}")
+        
+        except Exception as e:
+            logger.error(f"处理已成交订单时出错: {str(e)}")
+            logger.exception(e)
+        
+        return True  # 默认返回 True，表示结束监控线程
 
     def check_pending_orders(self) -> None:
         """
@@ -213,8 +318,8 @@ class OrderMonitor:
             
             for order in pending_orders:
                 # 如果订单已经超时，直接标记为失败
-                if order.created_at:
-                    elapsed_time = (datetime.datetime.now() - order.created_at).total_seconds()
+                if order.create_time:
+                    elapsed_time = (datetime.datetime.now() - order.create_time).total_seconds()
                     if elapsed_time > config["cancel_timeout"] * (config["max_retries"] + 1):
                         order.status = "FAILED"
                         order.save()

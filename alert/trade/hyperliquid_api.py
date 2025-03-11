@@ -1041,3 +1041,273 @@ class HyperliquidTrader:
                 "status": "error",
                 "error": str(e)
             }
+
+    @timeout_handler
+    def get_order_status(self, symbol, order_id):
+        """
+        获取单个订单的状态，使用官方 SDK 的 query_order_by_cloid 方法
+        
+        :param symbol: 交易对符号
+        :param order_id: 订单ID
+        :return: 订单状态信息，包含以下字段：
+                 - status: 'success' 或 'error'
+                 - order_status: 'FILLED', 'PENDING', 'PARTIALLY_FILLED', 'CANCELED' 或 'NOT_FOUND'
+                 - filled_quantity: 已成交数量
+                 - total_quantity: 总数量
+                 - error: 如果 status 为 'error'，则包含错误信息
+        """
+        start_time = time.time()
+        try:
+            logger.debug(f"查询订单状态: symbol={symbol}, order_id={order_id}")
+            
+            # 将订单ID转换为 Cloid 对象
+            from hyperliquid.utils.types import Cloid
+            try:
+                # 尝试从整数创建 Cloid
+                cloid = Cloid.from_int(int(order_id))
+            except:
+                # 如果失败，尝试从字符串创建 Cloid
+                cloid = Cloid.from_str(order_id)
+            
+            # 使用 query_order_by_cloid 方法查询订单状态
+            order_status = self.info.query_order_by_cloid(self.wallet_address, cloid)
+            logger.debug(f"订单状态查询结果: {order_status}")
+            
+            # 解析订单状态
+            if order_status and "statuses" in order_status:
+                statuses = order_status["statuses"]
+                if not statuses:
+                    # 没有找到订单
+                    logger.debug(f"未找到订单 {order_id}")
+                    return {
+                        "status": "success",
+                        "order_status": "NOT_FOUND",
+                        "filled_quantity": 0,
+                        "total_quantity": 0
+                    }
+                
+                # 获取第一个状态（应该只有一个）
+                status = statuses[0]
+                
+                # 解析订单状态
+                if "filled" in status:
+                    # 订单已成交
+                    filled_info = status["filled"]
+                    filled_quantity = float(filled_info.get("sz", 0))
+                    price = float(filled_info.get("px", 0))
+                    
+                    logger.info(f"订单 {order_id} 已成交: 数量={filled_quantity}, 价格={price}")
+                    return {
+                        "status": "success",
+                        "order_status": "FILLED",
+                        "filled_quantity": filled_quantity,
+                        "total_quantity": filled_quantity,
+                        "price": price
+                    }
+                elif "resting" in status:
+                    # 订单挂单中
+                    resting_info = status["resting"]
+                    total_quantity = float(resting_info.get("sz", 0))
+                    price = float(resting_info.get("px", 0))
+                    
+                    logger.debug(f"订单 {order_id} 挂单中: 数量={total_quantity}, 价格={price}")
+                    return {
+                        "status": "success",
+                        "order_status": "PENDING",
+                        "filled_quantity": 0,
+                        "total_quantity": total_quantity,
+                        "price": price
+                    }
+                elif "canceled" in status:
+                    # 订单已取消
+                    canceled_info = status["canceled"]
+                    total_quantity = float(canceled_info.get("sz", 0))
+                    price = float(canceled_info.get("px", 0))
+                    
+                    logger.info(f"订单 {order_id} 已取消: 数量={total_quantity}, 价格={price}")
+                    return {
+                        "status": "success",
+                        "order_status": "CANCELED",
+                        "filled_quantity": 0,
+                        "total_quantity": total_quantity,
+                        "price": price
+                    }
+            
+            # 如果无法解析状态，尝试查询历史成交记录
+            logger.debug(f"无法解析订单 {order_id} 的状态，尝试查询历史成交记录")
+            filled_orders = self.info.user_fills(self.wallet_address)
+            for fill in filled_orders:
+                if str(fill.get("oid")) == str(order_id):
+                    logger.info(f"在历史成交记录中找到订单 {order_id}: {fill}")
+                    return {
+                        "status": "success",
+                        "order_status": "FILLED",
+                        "filled_quantity": float(fill.get("sz", 0)),
+                        "total_quantity": float(fill.get("sz", 0)),
+                        "price": float(fill.get("px", 0))
+                    }
+            
+            # 如果所有查询都未找到订单
+            logger.debug(f"未找到订单 {order_id}")
+            return {
+                "status": "success",
+                "order_status": "NOT_FOUND",
+                "filled_quantity": 0,
+                "total_quantity": 0
+            }
+            
+        except Exception as e:
+            error_msg = f"查询订单状态时出错: {str(e)}"
+            logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            return {
+                "status": "error",
+                "error": error_msg
+            }
+        finally:
+            logger.debug(f"get_order_status 执行耗时: {time.time() - start_time:.2f}秒")
+    
+    @timeout_handler
+    def place_stop_loss_order(self, symbol: str, side: str, quantity: int, trigger_price: float, 
+                             limit_price: float = None, reduce_only: bool = True):
+        """
+        下止损单
+        :param symbol: 交易对名称，例如 "HYPE-USDC"
+        :param side: 交易方向，"buy"（做多）或"sell"（做空）
+        :param quantity: 交易数量（正整数）
+        :param trigger_price: 触发价格
+        :param limit_price: 限价，如果不指定则使用市价止损单
+        :param reduce_only: 是否只减仓，默认为 True
+        :return: 下单结果
+        """
+        try:
+            # 尝试建立WebSocket连接，但连接失败不影响下单
+            self._ensure_ws_connection()
+            
+            # 检查订单最小价值
+            order_value = quantity * trigger_price
+            if order_value < 10:
+                return {
+                    "status": "error",
+                    "error": f"订单价值（{order_value:.2f} USDC）低于交易所最小要求（10 USDC）"
+                }
+            
+            # 确保数量为正数
+            if quantity <= 0:
+                return {
+                    "status": "error",
+                    "error": "交易数量必须为正数"
+                }
+            
+            # 生成订单ID
+            import time
+            cloid = Cloid.from_int(int(time.time() * 1000))  # 使用时间戳作为订单ID
+            
+            # 获取交易对的基础币种
+            coin = symbol.split('-')[0] if '-' in symbol else symbol
+            
+            # 记录订单信息
+            direction = "多" if side.lower() == "buy" else "空"
+            logger.info(f"准备下止损单: {quantity}张 @ 触发价格 {trigger_price} USDC")
+            
+            # 确定订单类型
+            if limit_price is None:
+                # 使用市价止损单
+                order_type = {
+                    "trigger": {
+                        "triggerPx": trigger_price,
+                        "isMarket": True,
+                        "tpsl": "sl"
+                    }
+                }
+                logger.info(f"使用市价止损单，触发价格: {trigger_price}")
+            else:
+                # 使用限价止损单
+                order_type = {
+                    "trigger": {
+                        "triggerPx": trigger_price,
+                        "limitPx": limit_price,
+                        "isMarket": False,
+                        "tpsl": "sl"
+                    }
+                }
+                logger.info(f"使用限价止损单，触发价格: {trigger_price}, 限价: {limit_price}")
+            
+            # 发送订单
+            try:
+                response = self.exchange.order(
+                    coin,  # 交易对，如 "HYPE"
+                    side.lower() == "buy",  # is_buy
+                    quantity,  # sz
+                    limit_price,  # limit_px 对于限价止损单，应该设置为限价
+                    order_type,  # order_type
+                    cloid=cloid,  # 可选的客户端订单ID
+                    reduce_only=reduce_only  # 是否只减仓
+                )
+                logger.info(f"止损单响应: {response}")
+                
+                if response.get("status") == "ok":
+                    # 检查是否有错误信息
+                    order_statuses = response.get("response", {}).get("data", {}).get("statuses", [])
+                    if order_statuses and "error" in order_statuses[0]:
+                        error_msg = order_statuses[0]["error"]
+                        logger.error(f"下止损单失败: {error_msg}")
+                        return {
+                            "status": "error",
+                            "error": error_msg
+                        }
+                    
+                    # 从响应中获取订单ID
+                    order_id = None
+                    if order_statuses:
+                        status = order_statuses[0]
+                        if "resting" in status:
+                            order_id = status["resting"]["oid"]
+                        elif "filled" in status:
+                            order_id = status["filled"]["oid"]
+                        elif "triggered" in status:
+                            order_id = status["triggered"]["oid"]
+                    
+                    if not order_id:
+                        logger.error("下止损单成功但未获取到订单ID")
+                        return {
+                            "status": "error",
+                            "error": "下止损单成功但未获取到订单ID"
+                        }
+                    
+                    return {
+                        "status": "success",
+                        "response": response,
+                        "order_info": {
+                            "symbol": symbol,
+                            "side": side,
+                            "quantity": quantity,
+                            "trigger_price": trigger_price,
+                            "limit_price": limit_price,
+                            "reduce_only": reduce_only,
+                            "direction": direction,
+                            "cloid": str(cloid),
+                            "order_id": order_id,
+                            "order_type": "stop_loss"
+                        }
+                    }
+                else:
+                    return {
+                        "status": "error",
+                        "error": response.get("error", "Unknown error")
+                    }
+                    
+            except Exception as e:
+                logger.error(f"发送止损单时出错: {str(e)}")
+                return {
+                    "status": "error",
+                    "error": str(e)
+                }
+                
+        except Exception as e:
+            logger.error(f"下止损单过程中出错: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
