@@ -216,6 +216,10 @@ ORDER_MONITOR_CONFIG = {
     'batch_size': 50,          # 批量查询订单数量
 }
 
+# 信号队列配置
+SIGNAL_QUEUE_MAX_WORKERS = 10  # 最大线程数
+SIGNAL_QUEUE_MAX_SIZE = 1000  # 队列最大容量
+
 import os
 
 # 日志配置
