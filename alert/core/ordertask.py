@@ -148,6 +148,10 @@ class OrderMonitor:
                 last_filled = initial_status["filled_quantity"] if initial_status and initial_status["status"] == "success" else 0
                 status_check_count = 0
                 
+                # 初始化部分成交检测变量
+                detected_partial_fill = False
+                partial_fill_time = None
+                
                 # 本地计时监控
                 while True:
                     current_time = datetime.datetime.now()
@@ -207,27 +211,71 @@ class OrderMonitor:
                         
                         # 撤单前再次检查状态
                         final_check = self.trader.get_order_status(order_record.symbol, order_record.order_id)
-                        if final_check and final_check["status"] == "success" and final_check["order_status"] == "FILLED":
-                            order_record.status = "FILLED"
-                            order_record.filled_quantity = final_check["filled_quantity"]
-                            order_record.save()
-                            logger.info(f"订单 {order_record.order_id} 在撤单前发现已成交")
+                        if final_check and final_check["status"] == "success":
+                            # 如果订单已完全成交
+                            if final_check["order_status"] == "FILLED":
+                                order_record.status = "FILLED"
+                                order_record.filled_quantity = final_check["filled_quantity"]
+                                order_record.save()
+                                logger.info(f"订单 {order_record.order_id} 在撤单前发现已成交")
+                                
+                                # 处理成交后的逻辑
+                                should_end_monitor = self._handle_filled_order(order_record)
+                                if should_end_monitor:
+                                    logger.info(f"订单 {order_record.order_id} 处理完成，结束监控线程")
+                                    break
+                                else:
+                                    logger.info(f"订单 {order_record.order_id} 成交后继续监控")
                             
-                            # 处理成交后的逻辑
-                            should_end_monitor = self._handle_filled_order(order_record)
-                            if should_end_monitor:
-                                logger.info(f"订单 {order_record.order_id} 处理完成，结束监控线程")
-                                break
-                            else:
-                                logger.info(f"订单 {order_record.order_id} 成交后继续监控")
+                            # 如果订单部分成交
+                            elif final_check["order_status"] == "PARTIALLY_FILLED":
+                                # 标记检测到部分成交
+                                detected_partial_fill = True
+                                
+                                # 更新订单记录
+                                order_record.status = "PARTIALLY_FILLED"
+                                order_record.filled_quantity = final_check["filled_quantity"]
+                                order_record.save()
+                                
+                                logger.info(f"订单 {order_record.order_id} 在超时时仍然是部分成交状态，处理未成交部分")
+                                
+                                # 为已成交部分启动止损单
+                                if order_record.filled_quantity > 0:
+                                    logger.info(f"为部分成交订单 {order_record.order_id} 的已成交部分 ({order_record.filled_quantity}张) 启动止损")
+                                    
+                                    # 记录原始数量
+                                    original_quantity = order_record.quantity
+                                    
+                                    # 临时修改订单数量为已成交数量
+                                    order_record.quantity = order_record.filled_quantity
+                                    
+                                    # 导入止损单下单函数
+                                    from alert.trade.hyper_order import place_stop_loss_order
+                                    
+                                    # 下止损单
+                                    success, message = place_stop_loss_order(order_record)
+                                    
+                                    # 恢复原始数量
+                                    order_record.quantity = original_quantity
+                                    
+                                    if success:
+                                        logger.info(f"部分成交订单的止损单已完成: {message}")
+                                    else:
+                                        logger.error(f"部分成交订单的止损单报错: {message}")
                         
                         # 执行撤单
                         while cancel_retry_count < max_cancel_retries:
                             cancel_result = self.trader.cancel_order_by_id(order_record.symbol, order_record.order_id)
                             if cancel_result["status"] == "success":
-                                order_record.status = "CANCELLED"
-                                order_record.save()
-                                logger.info(f"订单 {order_record.order_id} 撤单成功")
+                                # 更新订单状态
+                                if detected_partial_fill:
+                                    # 如果是部分成交，保持状态为PARTIALLY_FILLED
+                                    logger.info(f"部分成交订单 {order_record.order_id} 的未成交部分已撤单成功")
+                                else:
+                                    # 如果完全未成交，则标记为已取消
+                                    order_record.status = "CANCELLED"
+                                    order_record.save()
+                                    logger.info(f"订单 {order_record.order_id} 撤单成功")
                                 return
                             
                             cancel_retry_count += 1

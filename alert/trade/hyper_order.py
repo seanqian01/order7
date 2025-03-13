@@ -191,14 +191,14 @@ def place_stop_loss_order(original_order_record):
         limit_price = stop_loss_price
         
         logger.info(f"准备下止损单: 原订单ID={original_order_record.order_id}, 方向={stop_loss_side}, "
-                   f"数量={original_order_record.quantity}, 触发价格={stop_loss_price}, 限价={limit_price}, "
+                   f"数量={original_order_record.filled_quantity if original_order_record.filled_quantity else original_order_record.quantity}, 触发价格={stop_loss_price}, 限价={limit_price}, "
                    f"原价格={actual_price}, 止损百分比={stop_loss_percentage}%")
         
         # 下止损单
         order_response = trader.place_stop_loss_order(
             symbol=original_order_record.symbol,
             side=stop_loss_side,
-            quantity=int(float(original_order_record.quantity)),
+            quantity=int(float(original_order_record.filled_quantity if original_order_record.filled_quantity else original_order_record.quantity)),
             trigger_price=stop_loss_price,
             limit_price=limit_price,
             reduce_only=True  # 止损单必须是只减仓
@@ -215,7 +215,7 @@ def place_stop_loss_order(original_order_record):
                     symbol=original_order_record.symbol,
                     side=stop_loss_side,
                     price=stop_loss_price,  # 使用触发价格作为价格
-                    quantity=original_order_record.quantity,
+                    quantity=original_order_record.filled_quantity if original_order_record.filled_quantity else original_order_record.quantity,
                     status="PENDING",
                     filled_quantity=0,
                     reduce_only=True,
