@@ -157,9 +157,9 @@ admin.site.register(User, MyUserAdmin)
 # 订单记录的只读Admin界面
 class OrderRecordAdmin(admin.ModelAdmin):
     list_display = [
-        'order_id','oid', 'symbol', 'side','order_type', 'price', 'quantity', 
-        'filled_quantity', 'status',  'is_stop_loss',
-         'fee',  'filled_time', 'create_time'
+        'order_id', 'short_oid', 'symbol', 'side', 'order_type', 'price', 'quantity', 
+        'filled_quantity', 'status', 'is_stop_loss',
+         'fee', 'filled_time', 'create_time'
     ]
     list_filter = ['status', 'side', 'is_stop_loss', 'reduce_only', 'order_type', 'create_time']
     search_fields = ['order_id', 'symbol', 'oid']
@@ -256,5 +256,12 @@ class OrderRecordAdmin(admin.ModelAdmin):
     # 禁止删除
     def has_delete_permission(self, request, obj=None):
         return False
+    
+    def short_oid(self, obj):
+        """只显示渠道订单ID的后6位"""
+        if obj.oid:
+            return f"...{obj.oid[-6:]}"
+        return "-"
+    short_oid.short_description = "渠道订单ID"
 
 admin.site.register(OrderRecord, OrderRecordAdmin)
