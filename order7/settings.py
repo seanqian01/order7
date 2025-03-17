@@ -201,16 +201,16 @@ REST_FRAMEWORK = {
 ORDER_MANAGEMENT = {
     'default': {
         'retry_interval': 5,    # 订单重试间隔(秒)
-        'cancel_timeout': 60,  # 撤单触发超时时间(秒)
+        'cancel_timeout': 180,  # 撤单触发超时时间(秒)
         'max_retries': 2,      # 最大重试次数
     },
 }
 
 # 订单监控配置
 ORDER_MONITOR_CONFIG = {
-    'initial_interval': 2,      # 初始检查间隔（秒）
-    'normal_interval': 5,      # 正常检查间隔（秒）
-    'intensive_interval': 2,    # 密集检查间隔（秒）
+    'initial_interval': 5,      # 初始检查间隔（秒）
+    'normal_interval': 10,      # 正常检查间隔（秒）
+    'intensive_interval': 3,    # 密集检查间隔（秒）
     'intensive_threshold': 10,  # 开始密集检查的剩余时间阈值（秒）
     'max_concurrent': 20,       # 最大并发监控数量
     'batch_size': 50,          # 批量查询订单数量
@@ -231,11 +231,15 @@ LOGGING = {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
+        'simple': {
+            'format': '{levelname}: {message}',
+            'style': '{',
+        },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+            'formatter': 'simple',  # 使用简单格式，只显示日志级别和消息
         },
         'file': {
             'class': 'logs.log.ReverseLogHandler',

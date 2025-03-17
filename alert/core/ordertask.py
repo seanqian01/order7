@@ -112,6 +112,12 @@ class OrderMonitor:
                 monitor_config = config['monitor']
                 cancel_timeout = config['cancel_timeout']
                 
+                # 添加详细日志，输出实际使用的配置值
+                logger.info(f"订单 {order_record.order_id} 监控配置: cancel_timeout={cancel_timeout}秒, "
+                           f"initial_interval={monitor_config['initial_interval']}秒, "
+                           f"normal_interval={monitor_config['normal_interval']}秒, "
+                           f"intensive_interval={monitor_config['intensive_interval']}秒")
+                
                 start_time = datetime.datetime.now()
                 logger.debug(f"订单监控开始时间: {start_time}, 超时时间: {cancel_timeout}秒")
                 
