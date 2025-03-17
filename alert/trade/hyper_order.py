@@ -97,7 +97,8 @@ def place_hyperliquid_order(alert_data, quantity=None):
                         status="PENDING",
                         filled_quantity=0,
                         reduce_only=reduce_only,
-                        is_stop_loss=False  # 这不是止损单
+                        is_stop_loss=False,  # 这不是止损单
+                        order_type="CLOSE" if reduce_only else "OPEN"  # 根据reduce_only标志设置订单类型
                     )
                     
                     # 启动订单监控线程

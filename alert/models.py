@@ -76,9 +76,10 @@ class stra_Alert(models.Model):
         (3, "虚拟货币"),
     ]
     contractType = models.IntegerField(choices=C_TYPE, blank=True, null=True, verbose_name="交易合约类型")
-    price = models.DecimalField(max_digits=20, decimal_places=2, verbose_name="价格")
+    # 修改精度为5位小数，确保能够存储更精确的价格
+    price = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="价格")
     action = models.CharField(max_length=100, verbose_name="交易方向")
-    status = models.BooleanField(default=False, blank=True, verbose_name="有效性")
+    ¬ = models.BooleanField(default=False, blank=True, verbose_name="有效性")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="触发时间")
     time_circle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, null=True, blank=True, verbose_name="时间周期")
     strategy_id = models.ForeignKey(Strategy, on_delete=models.CASCADE, null=True, blank=True, verbose_name="策略ID")
@@ -224,6 +225,7 @@ class ContractCode(models.Model):
         ordering = ['exchange', 'symbol']
 
 
+
 class OrderRecord(models.Model):
     """订单记录表"""
     ORDER_STATUS = (
@@ -233,19 +235,30 @@ class OrderRecord(models.Model):
         ('CANCELLED', '已取消'),
         ('REJECTED', '已拒绝'),
     )
+    
+    ORDER_TYPES = (
+        ('OPEN', '开仓单'),
+        ('CLOSE', '平仓单'),
+    )
 
     order_id = models.CharField('订单ID', max_length=50)
     symbol = models.CharField('交易对', max_length=20)
     side = models.CharField('方向', max_length=10)
-    quantity = models.DecimalField('数量', max_digits=18, decimal_places=8)
+    quantity = models.DecimalField('数量', max_digits=18, decimal_places=5)
     price = models.DecimalField('价格', max_digits=18, decimal_places=8)
     status = models.CharField('状态', max_length=20, choices=ORDER_STATUS, default='PENDING')
-    filled_quantity = models.DecimalField('已成交数量', max_digits=18, decimal_places=8, null=True, blank=True)
-    avg_price = models.DecimalField('成交均价', max_digits=18, decimal_places=8, null=True, blank=True)
+    filled_quantity = models.DecimalField('已成交数量', max_digits=18, decimal_places=5, null=True, blank=True)
+    avg_price = models.DecimalField('成交均价', max_digits=18, decimal_places=5, null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)
     reduce_only = models.BooleanField('是否只减仓', default=False)  
     is_stop_loss = models.BooleanField('是否是止损单', default=False)  
+    
+    # 新增字段
+    oid = models.CharField('渠道订单ID', max_length=50, null=True, blank=True, help_text='交易所平台的原始订单ID')
+    fee = models.DecimalField('手续费', max_digits=18, decimal_places=2, null=True, blank=True, help_text='订单成交的手续费')
+    order_type = models.CharField('订单类型', max_length=20, choices=ORDER_TYPES, default='UNKNOWN', help_text='订单类型：开仓单，平仓单')
+    filled_time = models.DateTimeField('成交时间', null=True, blank=True, help_text='订单成交时间')
 
     class Meta:
         db_table = 'order_record'

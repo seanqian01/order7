@@ -111,7 +111,7 @@ TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
-USE_TZ = False
+USE_TZ = True
 
 AUTH_USER_MODEL = 'alert.User'
 # Static files (CSS, JavaScript, Images)

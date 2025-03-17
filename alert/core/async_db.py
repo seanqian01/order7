@@ -3,6 +3,7 @@ from queue import Queue, Empty
 import logging
 from django.db import transaction, DatabaseError
 import time
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +55,45 @@ class AsyncDatabaseHandler:
                 # 从队列获取对象，设置1秒超时
                 model_instance = self.save_queue.get(timeout=1)
                 
+                # 记录保存前的对象信息
+                model_name = model_instance.__class__.__name__
+                model_id = getattr(model_instance, 'id', None)
+                model_str = f"{model_name}(id={model_id})"
+                
+                # 如果是OrderRecord，记录关键字段
+                if model_name == 'OrderRecord':
+                    key_fields = {
+                        'order_id': getattr(model_instance, 'order_id', None),
+                        'oid': getattr(model_instance, 'oid', None),
+                        'status': getattr(model_instance, 'status', None),
+                        'fee': getattr(model_instance, 'fee', None),
+                        'filled_time': getattr(model_instance, 'filled_time', None),
+                        'filled_quantity': getattr(model_instance, 'filled_quantity', None),
+                        'order_type': getattr(model_instance, 'order_type', None)
+                    }
+                    logger.info(f"准备保存 {model_str}，关键字段: {key_fields}")
+                else:
+                    logger.debug(f"准备保存 {model_str}")
+                
                 # 在事务中保存对象
                 with transaction.atomic():
                     model_instance.save()
-                    logger.debug(f"成功保存数据: {model_instance.__class__.__name__}")
+                    
+                    # 如果是OrderRecord，再次检查关键字段是否已保存
+                    if model_name == 'OrderRecord':
+                        saved_instance = model_instance.__class__.objects.get(id=model_id)
+                        saved_fields = {
+                            'order_id': getattr(saved_instance, 'order_id', None),
+                            'oid': getattr(saved_instance, 'oid', None),
+                            'status': getattr(saved_instance, 'status', None),
+                            'fee': getattr(saved_instance, 'fee', None),
+                            'filled_time': getattr(saved_instance, 'filled_time', None),
+                            'filled_quantity': getattr(saved_instance, 'filled_quantity', None),
+                            'order_type': getattr(saved_instance, 'order_type', None)
+                        }
+                        logger.info(f"成功保存 {model_str}，保存后的关键字段: {saved_fields}")
+                    else:
+                        logger.debug(f"成功保存数据: {model_str}")
                 
                 # 重置错误计数
                 consecutive_errors = 0
@@ -85,6 +121,12 @@ class AsyncDatabaseHandler:
                 consecutive_errors += 1
                 logger.error(f"数据库处理线程出错: {str(e)}", exc_info=True)
                 time.sleep(0.1)  # 短暂暂停避免频繁错误
+                # 标记任务完成，避免队列阻塞
+                try:
+                    self.save_queue.task_done()
+                    logger.warning(f"由于错误，标记任务为完成状态: {str(e)}")
+                except Exception as task_error:
+                    logger.error(f"标记任务完成时出错: {str(task_error)}")
 
     def stop(self):
         """停止数据库处理"""

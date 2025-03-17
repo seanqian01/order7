@@ -1090,7 +1090,23 @@ class HyperliquidTrader:
                 status = statuses[0]
                 
                 # 解析订单状态
-                if "filled" in status:
+                if "filled" in status and "resting" in status:
+                    # 订单部分成交
+                    filled_info = status["filled"]
+                    resting_info = status["resting"]
+                    filled_quantity = float(filled_info.get("sz", 0))
+                    total_quantity = filled_quantity + float(resting_info.get("sz", 0))
+                    price = float(filled_info.get("px", 0))
+                    
+                    logger.info(f"订单 {order_id} 部分成交: 已成交数量={filled_quantity}, 总数量={total_quantity}, 价格={price}")
+                    return {
+                        "status": "success",
+                        "order_status": "PARTIALLY_FILLED",
+                        "filled_quantity": filled_quantity,
+                        "total_quantity": total_quantity,
+                        "price": price
+                    }
+                elif "filled" in status:
                     # 订单已成交
                     filled_info = status["filled"]
                     filled_quantity = float(filled_info.get("sz", 0))

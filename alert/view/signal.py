@@ -36,6 +36,12 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
             alert_scode = json_data.get('scode')
             alert_contractType = int(json_data.get('contractType'))  # 确保合约类型是整数
             alert_price = json_data.get('price')
+            # 确保价格保由5位小数精度
+            try:
+                alert_price = float(alert_price)
+                alert_price = round(alert_price, 5)
+            except (ValueError, TypeError):
+                pass
             alert_action = json_data.get('action')
             time_circle_name = json_data.get('time_circle')
 
@@ -54,15 +60,37 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 action=alert_action,
                 created_at=timezone.now(),
                 time_circle=time_circle_instance
+                # status默认为False，表示无效
             )
-
-            # 异步保存信号数据到数据库
-            async_db_handler.async_save(trading_view_alert_data)
-
-            # 将信号添加到处理队列
-            signal_processor.add_signal(trading_view_alert_data)
-
-            return HttpResponse('信号已接收并加入处理队列', status=200)
+            
+            # 检查信号是否有效（避免重复处理相同方向的信号）
+            from alert.view.filter_signal import filter_trade_signal
+            response = filter_trade_signal(trading_view_alert_data)
+            
+            if response.status_code == status.HTTP_200_OK:
+                # 信号有效，设置状态为True
+                trading_view_alert_data.status = True
+                logger.info(f"信号有效，状态设置为True: {alert_symbol} {alert_action}")
+                
+                # 异步保存有效信号
+                async_db_handler.async_save(trading_view_alert_data)
+                logger.info(f"异步保存有效信号: {alert_symbol} {alert_action}")
+                
+                # 异步处理有效信号（添加到处理队列）
+                # 注意：这里我们直接将信号添加到处理队列，因为信号处理器会在单独的线程中处理
+                signal_processor.add_signal(trading_view_alert_data)
+                logger.info(f"信号已添加到处理队列: {alert_symbol} {alert_action}")
+                
+                return HttpResponse('信号已接收并加入处理队列', status=200)
+            else:
+                # 信号无效，状态保持默认的False
+                logger.warning(f"信号无效，状态保持为False: {alert_symbol} {alert_action}, 原因: {response.data.get('message', '未知原因')}")
+                
+                # 异步保存无效信号
+                async_db_handler.async_save(trading_view_alert_data)
+                logger.info(f"异步保存无效信号: {alert_symbol} {alert_action}")
+                
+                return HttpResponse(f"信号已接收但未加入处理队列: {response.data.get('message', '未知原因')}", status=200)
 
         except json.JSONDecodeError:
             logger.error("JSON解析错误")

@@ -21,10 +21,10 @@ def filter_trade_signal(alert_data):
     # 如果找到之前一个信号，比较它们的action
     if previous_signal and previous_signal.action == action:
         # 如果两个信号的action相同，则将当前信号标记为无效
+        logger.warning(f"信号无效: {scode} {action} 与上一个信号方向相同")
         return Response(status=status.HTTP_400_BAD_REQUEST, data={'message': 'Invalid trade signal, 当前信号无效, 请忽略'})
 
     # 如果没有找到之前一个信号，或者两个信号的action不同，将当前信号标记为有效
-    alert_data.status = True
-    alert_data.save()
-
+    logger.info(f"信号有效: {scode} {action}")
+    # 移除保存操作，只返回结果
     return Response(status=status.HTTP_200_OK, data={'message': 'Valid trade signal, 当前信号有效, 请处理'})

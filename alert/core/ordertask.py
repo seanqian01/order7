@@ -6,6 +6,7 @@ from django.conf import settings
 from alert.models import OrderRecord
 from alert.trade.hyperliquid_api import HyperliquidTrader
 import threading
+from alert.core.async_db import async_db_handler  # 导入异步数据库处理模块
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +126,13 @@ class OrderMonitor:
                         # 订单已成交，直接处理成交逻辑
                         order_record.status = "FILLED"
                         order_record.filled_quantity = initial_status["filled_quantity"]
-                        order_record.save()
+                        async_db_handler.async_save(order_record)  # 使用异步保存
                         logger.info(f"订单 {order_record.order_id} 已成交: {initial_status['filled_quantity']}张")
+                        
+                        # 异步更新订单详情（oid、fee、filled_time等）
+                        from alert.core.async_order_record import update_order_details_async
+                        logger.info(f"订单 {order_record.order_id} 已成交，异步更新订单详情")
+                        update_order_details_async(order_record.id)
                         
                         # 处理成交后的逻辑
                         should_end_monitor = self._handle_filled_order(order_record)
@@ -140,7 +146,7 @@ class OrderMonitor:
                         order_record.status = "SUBMITTED"
                         if initial_status["order_status"] == "PARTIALLY_FILLED":
                             order_record.filled_quantity = initial_status["filled_quantity"]
-                        order_record.save()
+                        async_db_handler.async_save(order_record)  # 使用异步保存
                         logger.info(f"订单 {order_record.order_id} 已确认提交，状态: {initial_status['order_status']}")
                 
                 # 记录上次状态，用于检测状态变化
@@ -182,8 +188,13 @@ class OrderMonitor:
                             if current_status == "FILLED":
                                 order_record.status = "FILLED"
                                 order_record.filled_quantity = current_filled
-                                order_record.save()
+                                async_db_handler.async_save(order_record)  # 使用异步保存
                                 logger.info(f"订单 {order_record.order_id} 已成交: {current_filled}张")
+                                
+                                # 异步更新订单详情（oid、fee、filled_time等）
+                                from alert.core.async_order_record import update_order_details_async
+                                logger.info(f"订单 {order_record.order_id} 已成交，异步更新订单详情")
+                                update_order_details_async(order_record.id)
                                 
                                 # 处理成交后的逻辑
                                 should_end_monitor = self._handle_filled_order(order_record)
@@ -196,8 +207,13 @@ class OrderMonitor:
                             elif current_status == "PARTIALLY_FILLED":
                                 order_record.status = "PARTIALLY_FILLED"
                                 order_record.filled_quantity = current_filled
-                                order_record.save()
+                                async_db_handler.async_save(order_record)  # 使用异步保存
                                 logger.info(f"订单 {order_record.order_id} 部分成交: {current_filled}张")
+                                
+                                # 异步更新订单详情（oid、fee、filled_time等）
+                                from alert.core.async_order_record import update_order_details_async
+                                logger.info(f"订单 {order_record.order_id} 部分成交，异步更新订单详情")
+                                update_order_details_async(order_record.id)
                             elif status_changed:
                                 logger.info(f"订单 {order_record.order_id} 状态变化: {last_status} -> {current_status}")
                         
@@ -216,8 +232,13 @@ class OrderMonitor:
                             if final_check["order_status"] == "FILLED":
                                 order_record.status = "FILLED"
                                 order_record.filled_quantity = final_check["filled_quantity"]
-                                order_record.save()
+                                async_db_handler.async_save(order_record)  # 使用异步保存
                                 logger.info(f"订单 {order_record.order_id} 在撤单前发现已成交")
+                                
+                                # 异步更新订单详情（oid、fee、filled_time等）
+                                from alert.core.async_order_record import update_order_details_async
+                                logger.info(f"订单 {order_record.order_id} 已成交，异步更新订单详情")
+                                update_order_details_async(order_record.id)
                                 
                                 # 处理成交后的逻辑
                                 should_end_monitor = self._handle_filled_order(order_record)
@@ -235,9 +256,14 @@ class OrderMonitor:
                                 # 更新订单记录
                                 order_record.status = "PARTIALLY_FILLED"
                                 order_record.filled_quantity = final_check["filled_quantity"]
-                                order_record.save()
+                                async_db_handler.async_save(order_record)  # 使用异步保存
                                 
                                 logger.info(f"订单 {order_record.order_id} 在超时时仍然是部分成交状态，处理未成交部分")
+                                
+                                # 异步更新订单详情（oid、fee、filled_time等）
+                                from alert.core.async_order_record import update_order_details_async
+                                logger.info(f"订单 {order_record.order_id} 部分成交，异步更新订单详情")
+                                update_order_details_async(order_record.id)
                                 
                                 # 为已成交部分启动止损单
                                 if order_record.filled_quantity > 0:
@@ -274,8 +300,14 @@ class OrderMonitor:
                                 else:
                                     # 如果完全未成交，则标记为已取消
                                     order_record.status = "CANCELLED"
-                                    order_record.save()
+                                    async_db_handler.async_save(order_record)  # 使用异步保存
                                     logger.info(f"订单 {order_record.order_id} 撤单成功")
+                                    
+                                    # 已取消的订单不需要再查询详情
+                                    # 注释掉以下代码，避免不必要的API查询
+                                    # from alert.core.async_order_record import update_order_details_async
+                                    # logger.info(f"订单 {order_record.order_id} 已取消，异步更新订单详情")
+                                    # update_order_details_async(order_record.id)
                                 return
                             
                             cancel_retry_count += 1
@@ -372,7 +404,7 @@ class OrderMonitor:
                     elapsed_time = (datetime.datetime.now() - order.create_time).total_seconds()
                     if elapsed_time > config["cancel_timeout"] * (config["max_retries"] + 1):
                         order.status = "FAILED"
-                        order.save()
+                        async_db_handler.async_save(order)  # 使用异步保存
                         logger.warning(f"订单 {order.order_id} 已超时，标记为失败")
                         continue
                 

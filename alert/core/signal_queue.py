@@ -70,21 +70,15 @@ class SignalQueueProcessor:
         try:
             logger.info(f"开始处理信号: {signal_data.symbol} {signal_data.action}")
             
-            # 调用过滤函数
-            response = filter_trade_signal(signal_data)
-
-            # 根据过滤结果处理信号
-            if response.status_code == status.HTTP_200_OK:
-                if signal_data.contractType == 3:  # 虚拟货币
-                    success = place_hyperliquid_order(signal_data)
-                    if success:
-                        logger.info(f"信号处理成功: {signal_data.symbol}")
-                    else:
-                        logger.error(f"信号处理失败: {signal_data.symbol}")
+            # 信号在添加到队列前已经过滤过，这里直接处理
+            if signal_data.contractType == 3:  # 虚拟货币
+                success = place_hyperliquid_order(signal_data)
+                if success:
+                    logger.info(f"信号处理成功: {signal_data.symbol}")
                 else:
-                    logger.info(f"非Hyperliquid渠道信号: {signal_data.symbol}")
+                    logger.error(f"信号处理失败: {signal_data.symbol}")
             else:
-                logger.warning(f"信号未通过过滤: {signal_data.symbol}, 原因: {response.data.get('message', '未知原因')}")
+                logger.info(f"非Hyperliquid渠道信号: {signal_data.symbol}")
 
         except Exception as e:
             logger.error(f"处理信号时出错: {str(e)}", exc_info=True)
