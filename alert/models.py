@@ -79,7 +79,7 @@ class stra_Alert(models.Model):
     # 修改精度为5位小数，确保能够存储更精确的价格
     price = models.DecimalField(max_digits=20, decimal_places=5, verbose_name="价格")
     action = models.CharField(max_length=100, verbose_name="交易方向")
-    ¬ = models.BooleanField(default=False, blank=True, verbose_name="有效性")
+    status = models.BooleanField(default=False, blank=True, verbose_name="有效性")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="触发时间")
     time_circle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, null=True, blank=True, verbose_name="时间周期")
     strategy_id = models.ForeignKey(Strategy, on_delete=models.CASCADE, null=True, blank=True, verbose_name="策略ID")
