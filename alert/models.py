@@ -228,6 +228,12 @@ class ContractCode(models.Model):
 
 class OrderRecord(models.Model):
     """订单记录表"""
+    ORDER_TYPES = (
+        ('OPEN', '开仓单'),
+        ('CLOSE', '平仓单'),
+        ('UNKNOWN', '未知')
+    )
+    
     ORDER_STATUS = (
         ('PENDING', '待成交'),
         ('PARTIALLY_FILLED', '部分成交'),
@@ -236,18 +242,14 @@ class OrderRecord(models.Model):
         ('REJECTED', '已拒绝'),
     )
     
-    ORDER_TYPES = (
-        ('OPEN', '开仓单'),
-        ('CLOSE', '平仓单'),
-    )
-
-    order_id = models.CharField('订单ID', max_length=50)
+    order_id = models.CharField('订单ID', max_length=50, unique=True)
     symbol = models.CharField('交易对', max_length=20)
     side = models.CharField('方向', max_length=10)
+    price = models.DecimalField('下单价格', max_digits=18, decimal_places=5)
+    filled_price = models.DecimalField('成交价格', max_digits=18, decimal_places=5, null=True, blank=True, help_text='订单实际成交价格，可能与下单价格不同')
     quantity = models.DecimalField('数量', max_digits=18, decimal_places=5)
-    price = models.DecimalField('价格', max_digits=18, decimal_places=8)
-    status = models.CharField('状态', max_length=20, choices=ORDER_STATUS, default='PENDING')
     filled_quantity = models.DecimalField('已成交数量', max_digits=18, decimal_places=5, null=True, blank=True)
+    status = models.CharField('状态', max_length=20, choices=ORDER_STATUS, default='PENDING')
     avg_price = models.DecimalField('成交均价', max_digits=18, decimal_places=5, null=True, blank=True)
     create_time = models.DateTimeField('创建时间', auto_now_add=True)
     update_time = models.DateTimeField('更新时间', auto_now=True)

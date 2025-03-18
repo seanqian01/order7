@@ -1045,7 +1045,7 @@ class HyperliquidTrader:
     @timeout_handler
     def get_order_status(self, symbol, order_id):
         """
-        获取单个订单的状态，使用官方 SDK 的 query_order_by_cloid 方法
+        查询订单状态
         
         :param symbol: 交易对符号
         :param order_id: 订单ID
@@ -1054,6 +1054,7 @@ class HyperliquidTrader:
                  - order_status: 'FILLED', 'PENDING', 'PARTIALLY_FILLED', 'CANCELED' 或 'NOT_FOUND'
                  - filled_quantity: 已成交数量
                  - total_quantity: 总数量
+                 - price: 成交价格
                  - error: 如果 status 为 'error'，则包含错误信息
         """
         start_time = time.time()
@@ -1077,14 +1078,9 @@ class HyperliquidTrader:
             if order_status and "statuses" in order_status:
                 statuses = order_status["statuses"]
                 if not statuses:
-                    # 没有找到订单
-                    logger.debug(f"未找到订单 {order_id}")
-                    return {
-                        "status": "success",
-                        "order_status": "NOT_FOUND",
-                        "filled_quantity": 0,
-                        "total_quantity": 0
-                    }
+                    # 没有找到订单，可能已经完全成交并从活跃订单中移除
+                    # 尝试从历史成交记录中查找
+                    return self._check_fills_for_completed_order(order_id)
                 
                 # 获取第一个状态（应该只有一个）
                 status = statuses[0]
@@ -1107,19 +1103,29 @@ class HyperliquidTrader:
                         "price": price
                     }
                 elif "filled" in status:
-                    # 订单已成交
+                    # 订单已成交，但可能是拆分成交的一部分
+                    # 检查是否有多个成交记录
                     filled_info = status["filled"]
                     filled_quantity = float(filled_info.get("sz", 0))
                     price = float(filled_info.get("px", 0))
                     
-                    logger.info(f"订单 {order_id} 已成交: 数量={filled_quantity}, 价格={price}")
-                    return {
-                        "status": "success",
-                        "order_status": "FILLED",
-                        "filled_quantity": filled_quantity,
-                        "total_quantity": filled_quantity,
-                        "price": price
-                    }
+                    # 检查是否有拆分成交
+                    fills_result = self._check_fills_for_completed_order(order_id)
+                    
+                    if fills_result["status"] == "success" and fills_result["order_status"] == "FILLED":
+                        # 如果在历史成交记录中找到了多个匹配的记录，使用累计的数量
+                        logger.info(f"订单 {order_id} 已拆分成交: 累计成交数量={fills_result['filled_quantity']}, 价格={fills_result['price']}")
+                        return fills_result
+                    else:
+                        # 否则使用单个成交记录的信息
+                        logger.info(f"订单 {order_id} 已成交: 数量={filled_quantity}, 价格={price}")
+                        return {
+                            "status": "success",
+                            "order_status": "FILLED",
+                            "filled_quantity": filled_quantity,
+                            "total_quantity": filled_quantity,
+                            "price": price
+                        }
                 elif "resting" in status:
                     # 订单挂单中
                     resting_info = status["resting"]
@@ -1149,28 +1155,8 @@ class HyperliquidTrader:
                         "price": price
                     }
             
-            # 如果无法解析状态，尝试查询历史成交记录
-            logger.debug(f"无法解析订单 {order_id} 的状态，尝试查询历史成交记录")
-            filled_orders = self.info.user_fills(self.wallet_address)
-            for fill in filled_orders:
-                if str(fill.get("oid")) == str(order_id):
-                    logger.info(f"在历史成交记录中找到订单 {order_id}: {fill}")
-                    return {
-                        "status": "success",
-                        "order_status": "FILLED",
-                        "filled_quantity": float(fill.get("sz", 0)),
-                        "total_quantity": float(fill.get("sz", 0)),
-                        "price": float(fill.get("px", 0))
-                    }
-            
-            # 如果所有查询都未找到订单
-            logger.debug(f"未找到订单 {order_id}")
-            return {
-                "status": "success",
-                "order_status": "NOT_FOUND",
-                "filled_quantity": 0,
-                "total_quantity": 0
-            }
+            # 如果通过 query_order_by_cloid 无法获取订单状态，尝试从历史成交记录中查找
+            return self._check_fills_for_completed_order(order_id)
             
         except Exception as e:
             error_msg = f"查询订单状态时出错: {str(e)}"
@@ -1184,6 +1170,70 @@ class HyperliquidTrader:
         finally:
             logger.debug(f"get_order_status 执行耗时: {time.time() - start_time:.2f}秒")
     
+    def _check_fills_for_completed_order(self, order_id):
+        """
+        从历史成交记录中查找已完成的订单
+        
+        :param order_id: 订单ID
+        :return: 订单状态信息
+        """
+        try:
+            # 查询历史成交记录
+            filled_orders = self.info.user_fills(self.wallet_address)
+            logger.debug(f"获取到 {len(filled_orders)} 条历史成交记录")
+            
+            # 查找所有匹配的订单记录（处理拆分成交的情况）
+            matching_fills = []
+            for fill in filled_orders:
+                if str(fill.get("oid")) == str(order_id):
+                    matching_fills.append(fill)
+                    logger.info(f"在历史成交记录中找到订单 {order_id}: {fill}")
+            
+            # 如果找到匹配的成交记录
+            if matching_fills:
+                # 初始化累计值
+                total_filled_quantity = 0.0
+                # 使用最新的成交价格
+                latest_price = 0.0
+                latest_time = 0
+                
+                # 累加所有匹配记录的数量
+                for fill in matching_fills:
+                    quantity = float(fill.get("sz", 0))
+                    total_filled_quantity += quantity
+                    
+                    # 使用最新的成交价格
+                    current_time = int(fill.get("time", 0))
+                    if current_time > latest_time:
+                        latest_time = current_time
+                        latest_price = float(fill.get("px", 0))
+                
+                logger.info(f"订单 {order_id} 拆分成 {len(matching_fills)} 笔成交，总成交数量: {total_filled_quantity}，最新成交价格: {latest_price}")
+                
+                return {
+                    "status": "success",
+                    "order_status": "FILLED",
+                    "filled_quantity": total_filled_quantity,
+                    "total_quantity": total_filled_quantity,
+                    "price": latest_price
+                }
+            
+            # 如果所有查询都未找到订单
+            logger.debug(f"未找到订单 {order_id}")
+            return {
+                "status": "success",
+                "order_status": "NOT_FOUND",
+                "filled_quantity": 0,
+                "total_quantity": 0,
+                "price": 0
+            }
+        except Exception as e:
+            logger.error(f"查询历史成交记录时出错: {str(e)}")
+            return {
+                "status": "error",
+                "error": f"查询历史成交记录时出错: {str(e)}"
+            }
+
     @timeout_handler
     def place_stop_loss_order(self, symbol: str, side: str, quantity: int, trigger_price: float, 
                              limit_price: float = None, reduce_only: bool = True):

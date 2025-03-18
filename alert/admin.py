@@ -38,7 +38,7 @@ class AlertAdmin(ImportExportModelAdmin, ExportActionModelAdmin):
                     'action',
                     'status',
                     'strategy_id',
-                    'created_at',
+                    'formatted_created_at',
                     ]
     list_filter = ('created_at', 'time_circle', 'scode', 'contractType', 'strategy_id','status')
     search_fields = ['scode', 'price']
@@ -51,8 +51,22 @@ class AlertAdmin(ImportExportModelAdmin, ExportActionModelAdmin):
         return self.export_action(modeladmin=self, request=request, queryset=queryset)
 
     export_selected.short_description = "导出选中项到Excel"
-
-
+    
+    def formatted_created_at(self, obj):
+        """格式化触发时间，精确到秒，使用上海时区"""
+        if obj.created_at:
+            from django.utils import timezone
+            # 确保时间是aware的（带有时区信息）
+            if timezone.is_naive(obj.created_at):
+                aware_time = timezone.make_aware(obj.created_at)
+            else:
+                aware_time = obj.created_at
+            # 转换为上海时区
+            shanghai_time = timezone.localtime(aware_time, timezone=timezone.get_fixed_timezone(480))  # UTC+8 = 480分钟
+            return shanghai_time.strftime('%Y-%m-%d %H:%M:%S')
+        return "-"
+    formatted_created_at.short_description = "触发时间"
+    formatted_created_at.admin_order_field = 'created_at'
 
     class Media:
         def __init__(self):
@@ -66,7 +80,7 @@ class AlertAdmin(ImportExportModelAdmin, ExportActionModelAdmin):
 
 
 class StrategyAdmin(admin.ModelAdmin):
-    list_display = ['id','strategy_name', 'status', 'strategy_time_cycle', 'stra_creater', 'update_time', 'create_time', ]
+    list_display = ['id','strategy_name', 'status', 'strategy_time_cycle', 'stra_creater', 'formatted_update_time', 'formatted_create_time', ]
     list_filter = ('strategy_name', 'status', 'strategy_time_cycle',)
     list_per_page = 30
 
@@ -82,6 +96,38 @@ class StrategyAdmin(admin.ModelAdmin):
     class Media:
         def __init__(self):
             pass
+
+    def formatted_update_time(self, obj):
+        """格式化更新时间，只显示日期，使用上海时区"""
+        if obj.update_time:
+            from django.utils import timezone
+            # 确保时间是aware的（带有时区信息）
+            if timezone.is_naive(obj.update_time):
+                aware_time = timezone.make_aware(obj.update_time)
+            else:
+                aware_time = obj.update_time
+            # 转换为上海时区
+            shanghai_time = timezone.localtime(aware_time, timezone=timezone.get_fixed_timezone(480))  # UTC+8 = 480分钟
+            return shanghai_time.strftime('%Y-%m-%d')
+        return "-"
+    formatted_update_time.short_description = "更新时间"
+    formatted_update_time.admin_order_field = 'update_time'
+    
+    def formatted_create_time(self, obj):
+        """格式化创建时间，只显示日期，使用上海时区"""
+        if obj.create_time:
+            from django.utils import timezone
+            # 确保时间是aware的（带有时区信息）
+            if timezone.is_naive(obj.create_time):
+                aware_time = timezone.make_aware(obj.create_time)
+            else:
+                aware_time = obj.create_time
+            # 转换为上海时区
+            shanghai_time = timezone.localtime(aware_time, timezone=timezone.get_fixed_timezone(480))  # UTC+8 = 480分钟
+            return shanghai_time.strftime('%Y-%m-%d')
+        return "-"
+    formatted_create_time.short_description = "创建时间"
+    formatted_create_time.admin_order_field = 'create_time'
 
 
 class MerchantAdmin(admin.ModelAdmin):
@@ -158,15 +204,15 @@ admin.site.register(User, MyUserAdmin)
 class OrderRecordAdmin(admin.ModelAdmin):
     list_display = [
         'order_id', 'short_oid', 'symbol', 'side', 'order_type', 'price', 'quantity', 
-        'filled_quantity', 'status', 'is_stop_loss',
-         'fee', 'filled_time', 'create_time'
+        'filled_price','filled_quantity', 'status', 'is_stop_loss', 
+         'fee', 'formatted_filled_time', 'formatted_create_time'
     ]
     list_filter = ['status', 'side', 'is_stop_loss', 'reduce_only', 'order_type', 'create_time']
     search_fields = ['order_id', 'symbol', 'oid']
     readonly_fields = [
         'order_id', 'symbol', 'side', 'price', 'quantity', 
         'filled_quantity', 'status', 'reduce_only', 'is_stop_loss',
-        'oid', 'fee', 'order_type', 'filled_time', 'create_time', 'update_time'
+        'oid', 'fee', 'order_type', 'formatted_filled_time', 'formatted_create_time', 'formatted_update_time'
     ]
     # 移除date_hierarchy以避免时区问题
     # date_hierarchy = 'create_time'
@@ -263,5 +309,53 @@ class OrderRecordAdmin(admin.ModelAdmin):
             return f"...{obj.oid[-6:]}"
         return "-"
     short_oid.short_description = "渠道订单ID"
+    
+    def formatted_create_time(self, obj):
+        """格式化创建时间，精确到秒，使用上海时区"""
+        if obj.create_time:
+            from django.utils import timezone
+            # 确保时间是aware的（带有时区信息）
+            if timezone.is_naive(obj.create_time):
+                aware_time = timezone.make_aware(obj.create_time)
+            else:
+                aware_time = obj.create_time
+            # 转换为上海时区
+            shanghai_time = timezone.localtime(aware_time, timezone=timezone.get_fixed_timezone(480))  # UTC+8 = 480分钟
+            return shanghai_time.strftime('%Y-%m-%d %H:%M:%S')
+        return "-"
+    formatted_create_time.short_description = "创建时间"
+    formatted_create_time.admin_order_field = 'create_time'
+    
+    def formatted_update_time(self, obj):
+        """格式化更新时间，精确到秒，使用上海时区"""
+        if obj.update_time:
+            from django.utils import timezone
+            # 确保时间是aware的（带有时区信息）
+            if timezone.is_naive(obj.update_time):
+                aware_time = timezone.make_aware(obj.update_time)
+            else:
+                aware_time = obj.update_time
+            # 转换为上海时区
+            shanghai_time = timezone.localtime(aware_time, timezone=timezone.get_fixed_timezone(480))  # UTC+8 = 480分钟
+            return shanghai_time.strftime('%Y-%m-%d %H:%M:%S')
+        return "-"
+    formatted_update_time.short_description = "更新时间"
+    formatted_update_time.admin_order_field = 'update_time'
+    
+    def formatted_filled_time(self, obj):
+        """格式化成交时间，精确到秒，使用上海时区"""
+        if obj.filled_time:
+            from django.utils import timezone
+            # 确保时间是aware的（带有时区信息）
+            if timezone.is_naive(obj.filled_time):
+                aware_time = timezone.make_aware(obj.filled_time)
+            else:
+                aware_time = obj.filled_time
+            # 转换为上海时区
+            shanghai_time = timezone.localtime(aware_time, timezone=timezone.get_fixed_timezone(480))  # UTC+8 = 480分钟
+            return shanghai_time.strftime('%Y-%m-%d %H:%M:%S')
+        return "-"
+    formatted_filled_time.short_description = "成交时间"
+    formatted_filled_time.admin_order_field = 'filled_time'
 
 admin.site.register(OrderRecord, OrderRecordAdmin)

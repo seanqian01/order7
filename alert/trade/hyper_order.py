@@ -95,7 +95,7 @@ def place_hyperliquid_order(alert_data, quantity=None):
                         price=alert_data.price,
                         quantity=quantity,
                         status="PENDING",
-                        filled_quantity=0,
+                        filled_quantity=None,
                         reduce_only=reduce_only,
                         is_stop_loss=False,  # 这不是止损单
                         order_type="CLOSE" if reduce_only else "OPEN",  # 根据reduce_only标志设置订单类型
@@ -219,9 +219,10 @@ def place_stop_loss_order(original_order_record):
                     price=stop_loss_price,  # 使用触发价格作为价格
                     quantity=original_order_record.filled_quantity if original_order_record.filled_quantity else original_order_record.quantity,
                     status="PENDING",
-                    filled_quantity=0,
+                    filled_quantity=None,  
                     reduce_only=True,
-                    is_stop_loss=True  # 标记为止损单
+                    is_stop_loss=True,  # 标记为止损单
+                    order_type="CLOSE"  # 确保止损单的订单类型为平仓单
                 )
                 
                 success_msg = f"止损单已创建: order_id={order_info['order_id']}"
@@ -233,13 +234,13 @@ def place_stop_loss_order(original_order_record):
                 logger.error(error_msg)
                 return False, error_msg
         else:
-            error_msg = order_response.get("error", "Unknown error")
-            logger.error(f"止损单下单失败: {error_msg}")
-            return False, f"止损单下单失败: {error_msg}"
-    
+            error_msg = f"下止损单失败: {order_response.get('error', '未知错误')}"
+            logger.error(error_msg)
+            return False, error_msg
+            
     except Exception as e:
-        error_msg = f"下止损单时出错: {str(e)}"
+        error_msg = f"创建止损单时出错: {str(e)}"
         logger.error(error_msg)
         import traceback
-        logger.error(f"Traceback:\n{traceback.format_exc()}")
+        logger.error(f"详细错误: {traceback.format_exc()}")
         return False, error_msg

@@ -89,6 +89,7 @@ class AsyncDatabaseHandler:
                             'fee': getattr(saved_instance, 'fee', None),
                             'filled_time': getattr(saved_instance, 'filled_time', None),
                             'filled_quantity': getattr(saved_instance, 'filled_quantity', None),
+                            'filled_price': getattr(saved_instance, 'filled_price', None),
                             'order_type': getattr(saved_instance, 'order_type', None)
                         }
                         logger.info(f"成功保存 {model_str}，保存后的关键字段: {saved_fields}")
