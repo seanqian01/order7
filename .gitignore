@@ -9,6 +9,8 @@ conf.py
 *.con
 channel_config.py
 
+*.bak
+
 
 # IntelliJ project files
 .idea
