@@ -269,20 +269,52 @@ def get_order_details(trader, symbol, cloid, order_status):
                 result = {"status": "success", "source": "query_order_by_cloid"}
                 
                 # 获取订单状态
-                order_status_str = order_info.get('status', '')
-                order_data = order_info.get('order', {})
+                # API返回的数据结构是嵌套的，需要正确处理
+                order_status_str = order_info.get('status', '')  # 这是外层的status
+                inner_order_data = order_info.get('order', {})  # 内层的order对象
                 
-                # 如果订单已成交
-                if order_status_str == 'filled':
+                # 打印完整的订单结构，以便调试
+                logger.info(f"外层订单状态: {order_status_str}")
+                logger.info(f"内层order结构: {inner_order_data}")
+                
+                # 如果内层结构中有status字段，使用它作为真正的订单状态
+                if 'status' in inner_order_data:
+                    order_status_str = inner_order_data.get('status', '')
+                    logger.info(f"使用内层状态: {order_status_str}")
+                
+                # 如果内层结构中有order字段，使用它作为真正的订单数据
+                order_data = inner_order_data.get('order', inner_order_data)
+                
+                # 打印最终使用的order_data
+                logger.info(f"最终使用的order_data: {order_data}")
+                
+                # 如果订单已成交或部分成交
+                if order_status_str in ['filled', 'closed', 'partial_fill']:
                     # 获取订单数量
-                    orig_size = float(order_data.get('origSz', 0))
-                    result["filled_quantity"] = orig_size
-                    logger.info(f"成功获取已成交订单的数量: {result['filled_quantity']}")
+                    # 根据API返回的数据结构，sz字段表示剩余未成交数量，origSz表示原始下单数量
+                    # 已成交数量 = origSz - sz
+                    sz_value = float(order_data.get('sz', 0))  # 剩余未成交数量
+                    orig_sz_value = float(order_data.get('origSz', 0))  # 原始下单数量
+                    
+                    logger.info(f"剩余未成交数量(sz): {sz_value}, 原始下单数量(origSz): {orig_sz_value}")
+                    
+                    # 计算已成交数量 = 原始数量 - 剩余数量
+                    filled_quantity = orig_sz_value - sz_value
+                    result["filled_quantity"] = filled_quantity
+                    logger.info(f"计算得到已成交数量(origSz - sz): {filled_quantity}")
+                    
+                    # 对于完全成交的订单，验证sz是否为0
+                    if order_status_str in ['filled', 'closed'] and sz_value > 0:
+                        logger.warning(f"警告：完全成交订单的sz值不为0: {sz_value}")
                     
                     # 获取成交时间
                     # API返回的order.timestamp是订单创建时间，而应该使用statusTimestamp作为状态更新时间
                     # 对于已成交的订单，statusTimestamp就是成交时间
-                    status_timestamp_ms = int(order_info.get('statusTimestamp', 0))
+                    # 先从内层结构中获取statusTimestamp
+                    status_timestamp_ms = int(inner_order_data.get('statusTimestamp', 0))
+                    # 如果内层没有，再从外层获取
+                    if status_timestamp_ms == 0:
+                        status_timestamp_ms = int(order_info.get('statusTimestamp', 0))
                     if status_timestamp_ms > 0:
                         # 将毫秒时间戳转换为秒
                         seconds_timestamp = status_timestamp_ms / 1000
@@ -297,13 +329,33 @@ def get_order_details(trader, symbol, cloid, order_status):
                         logger.info(f"未找到statusTimestamp，设置已成交订单的成交时间为当前时间: {result['filled_time']}")
                     
                     # 获取成交价格
-                    if "limitPx" in order_data:
-                        result["filled_price"] = Decimal(str(order_data["limitPx"]))
-                        logger.info(f"成功获取已成交订单的成交价格: {result['filled_price']}")
+                    # 根据API返回的数据结构，对于已成交订单，需要尝试多种方式获取成交价格
                     
-                    # 在订单状态中手续费信息通常不存在，设置默认值
-                    result["fee"] = Decimal('0')
-                    logger.info(f"使用默认手续费值: {result['fee']}")
+                    # 1. 先检查是否有filled字段
+                    filled_info = inner_order_data.get('filled', {})
+                    logger.info(f"成交信息 filled_info: {filled_info}")
+                    
+                    # 2. 尝试从不同字段获取成交价格
+                    if filled_info and "px" in filled_info:
+                        # 从filled_info中获取px
+                        result["filled_price"] = Decimal(str(filled_info["px"]))
+                        logger.info(f"从filled_info获取到实际成交价格: {result['filled_price']}")
+                    elif "px" in order_data:
+                        # 从order_data中获取px
+                        result["filled_price"] = Decimal(str(order_data["px"]))
+                        logger.info(f"从order_data获取到实际成交价格: {result['filled_price']}")
+                    elif "avgPx" in inner_order_data:
+                        # 尝试使用avgPx字段
+                        result["filled_price"] = Decimal(str(inner_order_data["avgPx"]))
+                        logger.info(f"使用avgPx作为成交价格: {result['filled_price']}")
+                    elif "limitPx" in order_data:
+                        # 如果没有其他价格信息，使用limitPx
+                        result["filled_price"] = Decimal(str(order_data["limitPx"]))
+                        logger.info(f"未找到实际成交价格，使用下单限价: {result['filled_price']}")
+                    
+                    # 在订单状态中手续费信息通常不存在，设置默认值为 None
+                    result["fee"] = None
+                    logger.info(f"设置手续费默认值为 None")
                     
                     # 如果订单数据中包含fee字段（不太可能），则使用它
                     if "fee" in order_data:
@@ -315,45 +367,8 @@ def get_order_details(trader, symbol, cloid, order_status):
                     
                     return result
                 
-                # 如果订单部分成交，获取部分成交信息
-                elif order_status_str == 'partial_fill':
-                    # 如果有部分成交信息
-                    if "sz" in order_data:
-                        result["filled_quantity"] = float(order_data["sz"])
-                        logger.info(f"成功获取部分成交订单的数量: {result['filled_quantity']}")
-                    
-                    # 在订单状态中手续费信息通常不存在，设置默认值
-                    result["fee"] = Decimal('0')
-                    logger.info(f"使用默认手续费值: {result['fee']}")
-                    
-                    # 如果订单数据中包含fee字段（不太可能），则使用它
-                    if "fee" in order_data:
-                        result["fee"] = Decimal(str(order_data["fee"]))
-                        logger.info(f"从订单状态中获取到手续费: {result['fee']}")
-                    
-                    # 如果需要手续费的精确值，可以在订单成交后通过其他方式更新
-                    # 例如，可以通过定期任务或其他方式获取手续费并更新订单记录
-                    
-                    # 获取成交时间
-                    # 对于部分成交的订单，也使用statusTimestamp作为成交时间
-                    status_timestamp_ms = int(order_info.get('statusTimestamp', 0))
-                    if status_timestamp_ms > 0:
-                        # 将毫秒时间戳转换为秒
-                        seconds_timestamp = status_timestamp_ms / 1000
-                        # 转换为datetime对象
-                        filled_datetime = datetime.fromtimestamp(seconds_timestamp)
-                        result["filled_time"] = filled_datetime
-                        logger.info(f"成功获取部分成交订单的成交时间: {result['filled_time']}")
-                    else:
-                        # 如果没有statusTimestamp，使用当前时间作为备选
-                        filled_datetime = datetime.now()
-                        result["filled_time"] = filled_datetime
-                        logger.info(f"未找到statusTimestamp，设置部分成交订单的成交时间为当前时间: {result['filled_time']}")
-                    
-                    # 获取成交价格
-                    if "limitPx" in order_data:
-                        result["filled_price"] = Decimal(str(order_data["limitPx"]))
-                        logger.info(f"成功获取部分成交订单的成交价格: {result['filled_price']}")
+                # 对于非成交或部分成交的订单，已在上面的if语句中处理
+                # 这里只需处理其他状态
                 
                 return result
             

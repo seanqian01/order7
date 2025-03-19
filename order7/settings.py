@@ -268,3 +268,6 @@ try:
     from .conf import *
 except ImportError:
     pass
+
+# WebSocket 配置
+WEBSOCKET_IDLE_TIMEOUT = 60  # WebSocket 闲置超时时间（秒）

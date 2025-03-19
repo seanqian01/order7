@@ -15,9 +15,7 @@ import json
 import datetime
 import sys
 from alert.models import Exchange as ExchangeModel, ContractCode, OrderRecord
-import websocket
-import threading
-import ssl
+from alert.core.net_check import WebSocketManager, create_hyperliquid_ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +60,7 @@ class HyperliquidTrader:
             self.info = None
             self.exchange = None
             self.exchange_instance = None
-            self._ws = None
-            self._ws_connected = False
-            self._ws_lock = None
-            self._ws_thread = None
-            self._ws_should_run = False
+            self._ws_manager = None
             return
             
         try:
@@ -84,23 +78,46 @@ class HyperliquidTrader:
             if self.wallet_address == "":
                 self.wallet_address = self.account.address
             
-            # 初始化Info和Exchange对象
-            self.info = Info(self.api_url)
-            self.exchange = Exchange(
-                self.account,
-                self.api_url,
-                account_address=self.wallet_address
-            )
+            # 初始化Info和Exchange对象 - 添加重试逻辑
+            max_retries = 3
+            retry_count = 0
+            retry_delay = 1  # 初始重试延迟（秒）
+            
+            while retry_count < max_retries:
+                try:
+                    self.info = Info(self.api_url)
+                    self.exchange = Exchange(
+                        self.account,
+                        self.api_url,
+                        account_address=self.wallet_address
+                    )
+                    break  # 成功初始化，跳出循环
+                except ConnectionResetError as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logger.error(f"初始化API连接失败，连接被重置 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                        raise
+                    logger.warning(f"API连接被重置，正在重试 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避策略
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logger.error(f"初始化API连接失败 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                        raise
+                    logger.warning(f"API连接出错，正在重试 (尝试 {retry_count}/{max_retries}): {str(e)}")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避策略
             
             # 获取交易所实例
             self.exchange_instance = None  # Initialize as None, will be loaded lazily
             
-            # WebSocket相关
-            self._ws = None
-            self._ws_connected = False
-            self._ws_lock = threading.Lock()
-            self._ws_thread = None
-            self._ws_should_run = False
+            # 初始化WebSocket管理器
+            self._ws_manager = create_hyperliquid_ws_manager(
+                env=self.env,
+                on_message=self._on_ws_message,
+                idle_timeout=getattr(settings, 'WEBSOCKET_IDLE_TIMEOUT', 60)  # 使用settings中的闲置超时时间
+            )
             
             logger.info(f"HyperliquidTrader initialized in {self.env} environment")
             logger.debug(f"Hyperliquid API已初始化 ({self.env})")
@@ -123,41 +140,25 @@ class HyperliquidTrader:
     def _ensure_ws_connection(self):
         """
         确保WebSocket连接已建立，仅在需要时建立连接
+        现在使用WebSocketManager来管理连接
         """
-        with self._ws_lock:
-            if not self._ws_connected and not self._ws_thread:
-                logger.debug("正在按需建立WebSocket连接")
-                self._ws_should_run = True
-                self._ws_thread = threading.Thread(target=self._ws_connect)
-                self._ws_thread.daemon = True
-                self._ws_thread.start()
-                
-                # 等待连接建立或超时
-                timeout = 5  # 5秒超时
-                start_time = time.time()
-                while not self._ws_connected and time.time() - start_time < timeout:
-                    time.sleep(0.1)
-                
-                if not self._ws_connected:
-                    logger.warning("WebSocket连接未能在预期时间内建立，将继续执行")
+        return self._ws_manager.ensure_connected()
 
-    def _ws_connect(self):
+    def _on_ws_message(self, data):
         """
-        建立WebSocket连接
+        处理WebSocket消息
+        这个方法将作为回调函数传递给WebSocketManager
+        
+        Args:
+            data: 解析后的JSON数据
         """
         try:
-            logger.debug(f"正在连接WebSocket: wss://{'dev-' if self.env == 'testnet' else ''}api.hyperliquid.xyz/ws")
-            self._ws = websocket.WebSocketApp(
-                f"wss://{'dev-' if self.env == 'testnet' else ''}api.hyperliquid.xyz/ws",
-                on_open=self._on_ws_open,
-                on_message=self._on_ws_message,
-                on_error=self._on_ws_error,
-                on_close=self._on_ws_close
-            )
-            self._ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE}, ping_interval=30, ping_timeout=10, skip_utf8_validation=True)
+            logger.debug(f"处理WebSocket消息: {data}")
+            # 在这里实现具体的消息处理逻辑
+            # 例如，处理市场数据、订单更新等
+            pass
         except Exception as e:
-            logger.error(f"WebSocket连接出错: {str(e)}")
-            self._ws_connected = False
+            logger.warning(f"处理WebSocket消息时出错: {str(e)}")
 
     def _on_ws_open(self, ws):
         """WebSocket连接建立时的回调"""
@@ -169,11 +170,19 @@ class HyperliquidTrader:
         """WebSocket连接关闭时的回调"""
         with self._ws_lock:
             self._ws_connected = False
-        logger.info("WebSocket连接已关闭")
+        
+        close_info = f"状态码: {close_status_code}" if close_status_code else "无状态码"
+        close_info += f", 消息: {close_msg}" if close_msg else ", 无消息"
+        logger.info(f"WebSocket连接已关闭 ({close_info})")
 
     def _on_ws_error(self, ws, error):
         """WebSocket错误时的回调"""
-        logger.warning(f"WebSocket错误: {error}")
+        if isinstance(error, ConnectionResetError):
+            logger.warning(f"WebSocket连接被重置: {error}")
+        else:
+            logger.warning(f"WebSocket错误: {error}")
+        
+        # 不在回调中直接修改连接状态，因为websocket-client库会自动调用on_close
 
     def _on_ws_message(self, ws, message):
         """WebSocket消息处理"""
@@ -195,9 +204,12 @@ class HyperliquidTrader:
                 }
             }
             
-            # 发送订阅请求
-            self._ws.send(json.dumps(subscribe_msg))
-            logger.info("已发送市场数据订阅请求")
+            # 使用WebSocketManager发送订阅请求
+            success = self._ws_manager.subscribe(subscribe_msg)
+            if success:
+                logger.info("已发送市场数据订阅请求")
+            else:
+                logger.warning("发送市场数据订阅请求失败")
         except Exception as e:
             logger.warning(f"订阅市场数据失败: {str(e)}")
 
