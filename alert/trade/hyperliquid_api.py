@@ -1043,12 +1043,12 @@ class HyperliquidTrader:
             }
 
     @timeout_handler
-    def get_order_status(self, symbol, order_id):
+    def get_order_status(self, symbol, cloid):
         """
         查询订单状态
         
         :param symbol: 交易对符号
-        :param order_id: 订单ID
+        :param cloid: 交易所的订单号（从API的cloid字段获取）
         :return: 订单状态信息，包含以下字段：
                  - status: 'success' 或 'error'
                  - order_status: 'FILLED', 'PENDING', 'PARTIALLY_FILLED', 'CANCELED' 或 'NOT_FOUND'
@@ -1059,19 +1059,23 @@ class HyperliquidTrader:
         """
         start_time = time.time()
         try:
-            logger.debug(f"查询订单状态: symbol={symbol}, order_id={order_id}")
+            logger.debug(f"查询订单状态: symbol={symbol}, cloid={cloid}")
             
-            # 将订单ID转换为 Cloid 对象
-            from hyperliquid.utils.types import Cloid
+            # 将交易所订单号转换为 Cloid 对象
             try:
-                # 尝试从整数创建 Cloid
-                cloid = Cloid.from_int(int(order_id))
-            except:
-                # 如果失败，尝试从字符串创建 Cloid
-                cloid = Cloid.from_str(order_id)
+                from hyperliquid.utils.types import Cloid
+                # 直接使用原始的 cloid 值
+                cloid_obj = Cloid.from_str(str(cloid))
+                logger.info(f"创建 Cloid 对象成功: {cloid}")
+            except Exception as e:
+                logger.error(f"创建 Cloid 对象失败: {str(e)}")
+                return {
+                    "status": "error",
+                    "error": f"Invalid exchange order ID format: {str(e)}"
+                }
             
             # 使用 query_order_by_cloid 方法查询订单状态
-            order_status = self.info.query_order_by_cloid(self.wallet_address, cloid)
+            order_status = self.info.query_order_by_cloid(self.wallet_address, cloid_obj)
             logger.debug(f"订单状态查询结果: {order_status}")
             
             # 解析订单状态
@@ -1080,7 +1084,7 @@ class HyperliquidTrader:
                 if not statuses:
                     # 没有找到订单，可能已经完全成交并从活跃订单中移除
                     # 尝试从历史成交记录中查找
-                    return self._check_fills_for_completed_order(order_id)
+                    return self._check_fills_for_completed_order(cloid)
                 
                 # 获取第一个状态（应该只有一个）
                 status = statuses[0]
@@ -1094,7 +1098,7 @@ class HyperliquidTrader:
                     total_quantity = filled_quantity + float(resting_info.get("sz", 0))
                     price = float(filled_info.get("px", 0))
                     
-                    logger.info(f"订单 {order_id} 部分成交: 已成交数量={filled_quantity}, 总数量={total_quantity}, 价格={price}")
+                    logger.info(f"订单 {cloid} 部分成交: 已成交数量={filled_quantity}, 总数量={total_quantity}, 价格={price}")
                     return {
                         "status": "success",
                         "order_status": "PARTIALLY_FILLED",
@@ -1110,15 +1114,15 @@ class HyperliquidTrader:
                     price = float(filled_info.get("px", 0))
                     
                     # 检查是否有拆分成交
-                    fills_result = self._check_fills_for_completed_order(order_id)
+                    fills_result = self._check_fills_for_completed_order(cloid)
                     
                     if fills_result["status"] == "success" and fills_result["order_status"] == "FILLED":
                         # 如果在历史成交记录中找到了多个匹配的记录，使用累计的数量
-                        logger.info(f"订单 {order_id} 已拆分成交: 累计成交数量={fills_result['filled_quantity']}, 价格={fills_result['price']}")
+                        logger.info(f"订单 {cloid} 已拆分成交: 累计成交数量={fills_result['filled_quantity']}, 价格={fills_result['price']}")
                         return fills_result
                     else:
                         # 否则使用单个成交记录的信息
-                        logger.info(f"订单 {order_id} 已成交: 数量={filled_quantity}, 价格={price}")
+                        logger.info(f"订单 {cloid} 已成交: 数量={filled_quantity}, 价格={price}")
                         return {
                             "status": "success",
                             "order_status": "FILLED",
@@ -1132,7 +1136,7 @@ class HyperliquidTrader:
                     total_quantity = float(resting_info.get("sz", 0))
                     price = float(resting_info.get("px", 0))
                     
-                    logger.debug(f"订单 {order_id} 挂单中: 数量={total_quantity}, 价格={price}")
+                    logger.debug(f"订单 {cloid} 挂单中: 数量={total_quantity}, 价格={price}")
                     return {
                         "status": "success",
                         "order_status": "PENDING",
@@ -1146,7 +1150,7 @@ class HyperliquidTrader:
                     total_quantity = float(canceled_info.get("sz", 0))
                     price = float(canceled_info.get("px", 0))
                     
-                    logger.info(f"订单 {order_id} 已取消: 数量={total_quantity}, 价格={price}")
+                    logger.info(f"订单 {cloid} 已取消: 数量={total_quantity}, 价格={price}")
                     return {
                         "status": "success",
                         "order_status": "CANCELED",
@@ -1155,8 +1159,34 @@ class HyperliquidTrader:
                         "price": price
                     }
             
+            # 如果订单状态为 'order' 且有 'order' 字段，说明订单存在
+            if order_status.get('status') == 'order' and order_status.get('order'):
+                order_info = order_status['order'].get('order', {})
+                order_status_str = order_status['order'].get('status', '')
+                
+                # 解析订单信息
+                total_quantity = float(order_info.get('sz', 0))
+                filled_quantity = float(order_info.get('filled', 0)) if 'filled' in order_info else 0
+                price = float(order_info.get('limitPx', 0))
+                
+                # 映射订单状态
+                status_mapping = {
+                    'open': 'PENDING',
+                    'filled': 'FILLED',
+                    'canceled': 'CANCELED'
+                }
+                mapped_status = status_mapping.get(order_status_str, 'UNKNOWN')
+                
+                return {
+                    'status': 'success',
+                    'order_status': mapped_status,
+                    'filled_quantity': filled_quantity,
+                    'total_quantity': total_quantity,
+                    'price': price
+                }
+            
             # 如果通过 query_order_by_cloid 无法获取订单状态，尝试从历史成交记录中查找
-            return self._check_fills_for_completed_order(order_id)
+            return self._check_fills_for_completed_order(cloid)
             
         except Exception as e:
             error_msg = f"查询订单状态时出错: {str(e)}"
@@ -1170,11 +1200,11 @@ class HyperliquidTrader:
         finally:
             logger.debug(f"get_order_status 执行耗时: {time.time() - start_time:.2f}秒")
     
-    def _check_fills_for_completed_order(self, order_id):
+    def _check_fills_for_completed_order(self, cloid):
         """
         从历史成交记录中查找已完成的订单
         
-        :param order_id: 订单ID
+        :param cloid: 交易所的订单号（从API的cloid字段获取）
         :return: 订单状态信息
         """
         try:
@@ -1185,9 +1215,9 @@ class HyperliquidTrader:
             # 查找所有匹配的订单记录（处理拆分成交的情况）
             matching_fills = []
             for fill in filled_orders:
-                if str(fill.get("oid")) == str(order_id):
+                if str(fill.get("cloid")) == str(cloid):  # 使用cloid匹配交易所订单号
                     matching_fills.append(fill)
-                    logger.info(f"在历史成交记录中找到订单 {order_id}: {fill}")
+                    logger.debug(f"在历史成交记录中找到订单 cloid={cloid}: {fill}")
             
             # 如果找到匹配的成交记录
             if matching_fills:
@@ -1324,22 +1354,26 @@ class HyperliquidTrader:
                             "error": error_msg
                         }
                     
-                    # 从响应中获取订单ID
+                    # 从响应中获取订单号
                     order_id = None
+                    exchange_cloid = None
                     if order_statuses:
                         status = order_statuses[0]
                         if "resting" in status:
-                            order_id = status["resting"]["oid"]
+                            order_id = status["resting"]["oid"]      # API返回的oid是我们的订单号
+                            exchange_cloid = status["resting"]["cloid"]  # API返回的cloid是交易所的订单号
                         elif "filled" in status:
                             order_id = status["filled"]["oid"]
+                            exchange_cloid = status["filled"]["cloid"]
                         elif "triggered" in status:
                             order_id = status["triggered"]["oid"]
+                            exchange_cloid = status["triggered"]["cloid"]
                     
-                    if not order_id:
-                        logger.error("下止损单成功但未获取到订单ID")
+                    if not order_id or not exchange_cloid:
+                        logger.error("下止损单成功但未获取到订单号")
                         return {
                             "status": "error",
-                            "error": "下止损单成功但未获取到订单ID"
+                            "error": "下止损单成功但未获取到订单号"
                         }
                     
                     return {

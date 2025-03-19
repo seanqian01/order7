@@ -43,10 +43,10 @@ def update_order_details_async(order_record_id):
         
         # 先查询最新的订单状态
         try:
-            latest_status = trader.get_order_status(order_record.symbol, order_record.order_id)
+            latest_status = trader.get_order_status(order_record.symbol, order_record.cloid)  # 使用交易所订单号查询
             if latest_status and latest_status["status"] == "success":
                 current_status = latest_status.get("order_status")
-                logger.info(f"订单 {order_record.order_id} 当前状态: {current_status}")
+                logger.info(f"订单 {order_record.order_id}(交易所订单号: {order_record.cloid}) 当前状态: {current_status}")
                 
                 # 如果订单已取消，跳过更新
                 if current_status == "CANCELED":
@@ -76,7 +76,7 @@ def update_order_details_async(order_record_id):
             logger.warning(f"查询订单 {order_record.order_id} 最新状态时出错: {str(e)}，将继续使用数据库中的状态")
         
         # 获取订单详细信息
-        order_details = get_order_details(trader, order_record.symbol, order_record.order_id, order_record.status)
+        order_details = get_order_details(trader, order_record.symbol, order_record.cloid, order_record.status)  # 使用交易所订单号查询
         
         if order_details and order_details["status"] == "success":
             # 检查是否获取到了关键字段
@@ -219,22 +219,26 @@ def update_order_details_async(order_record_id):
         logger.error(f"详细错误: {traceback.format_exc()}")
 
 
-def get_order_details(trader, symbol, order_id, order_status):
+def get_order_details(trader, symbol, cloid, order_status):
     """
     获取订单详细信息，包括手续费、成交数量、成交时间等
     
+    该函数使用 query_order_by_cloid 方法直接查询订单状态，避免不必要的历史成交记录查询。
+    对于已成交的订单，会从订单状态中提取成交价格、数量和时间信息，
+    仅在需要获取手续费时才会查询历史成交记录。
+    
     :param trader: 交易对象
     :param symbol: 交易对符号
-    :param order_id: 订单ID
+    :param cloid: 交易所的订单号（从API的cloid字段获取）
     :param order_status: 订单状态
-    :return: 订单详细信息
+    :return: 订单详细信息字典，包含 status、fee、filled_quantity、filled_time 等字段
     """
     try:
-        logger.info(f"获取订单详情: symbol={symbol}, order_id={order_id}, order_status={order_status}")
+        logger.info(f"获取订单详情: symbol={symbol}, cloid={cloid}, order_status={order_status}")
         
         # 如果订单已取消，直接返回空信息
         if order_status == "CANCELED":
-            logger.info(f"订单 {order_id} 已取消，返回空信息")
+            logger.info(f"订单 {cloid} 已取消，返回空信息")
             return {
                 "status": "success",
                 "fee": Decimal('0'),
@@ -246,119 +250,120 @@ def get_order_details(trader, symbol, order_id, order_status):
         # 优先使用query_order_by_cloid方法获取订单状态
         from hyperliquid.utils.types import Cloid
         try:
-            logger.debug(f"尝试将订单ID转换为Cloid对象: {order_id}")
-            try:
-                cloid = Cloid.from_int(int(order_id))
-                logger.debug(f"成功将订单ID转换为Cloid对象(int): {cloid}")
-            except:
-                cloid = Cloid.from_str(order_id)
-                logger.debug(f"成功将订单ID转换为Cloid对象(str): {cloid}")
+            logger.debug(f"尝试将cloid转换为Cloid对象: {cloid}")
+            # 直接使用传入的cloid创建Cloid对象
+            cloid_obj = Cloid.from_str(str(cloid))
+            logger.debug(f"成功将cloid转换为Cloid对象: {cloid_obj}")
             
             # 查询订单状态
-            logger.debug(f"调用API查询订单状态: wallet_address={mask_sensitive_info(trader.wallet_address)}, cloid={cloid}")
-            order_status_result = trader.info.query_order_by_cloid(trader.wallet_address, cloid)
+            logger.debug(f"调用API查询订单状态: wallet_address={mask_sensitive_info(trader.wallet_address)}, cloid={cloid_obj}")
+            order_status_result = trader.info.query_order_by_cloid(trader.wallet_address, cloid_obj)
             logger.debug(f"订单详细信息查询结果: {order_status_result}")
             
-            if order_status_result and "statuses" in order_status_result and order_status_result["statuses"]:
-                statuses = order_status_result["statuses"]
-                status = statuses[0]
-                logger.debug(f"解析订单状态: {status}")
+            # 检查订单状态结果是否包含 order 字段
+            if order_status_result and order_status_result.get('status') == 'order' and order_status_result.get('order'):
+                order_info = order_status_result['order']
+                logger.debug(f"解析订单状态: {order_info}")
                 
                 # 解析订单详细信息
                 result = {"status": "success", "source": "query_order_by_cloid"}
                 
-                # 首先尝试从状态中获取 fee，不管订单状态如何
-                if "fee" in status:
-                    result["fee"] = Decimal(str(status["fee"]))
-                    logger.info(f"直接从状态中获取到订单的手续费: {result['fee']}")
+                # 获取订单状态
+                order_status_str = order_info.get('status', '')
+                order_data = order_info.get('order', {})
                 
-                # 如果订单已成交，获取成交信息
-                if "filled" in status:
-                    filled_info = status["filled"]
-                    logger.debug(f"订单已成交，成交信息: {filled_info}")
+                # 如果订单已成交
+                if order_status_str == 'filled':
+                    # 获取订单数量
+                    orig_size = float(order_data.get('origSz', 0))
+                    result["filled_quantity"] = orig_size
+                    logger.info(f"成功获取已成交订单的数量: {result['filled_quantity']}")
                     
-                    # 检查fee字段
-                    if "fee" in filled_info:
-                        result["fee"] = Decimal(str(filled_info["fee"]))
-                        logger.info(f"成功获取已成交订单的手续费: {result['fee']}")
-                    
-                    # 检查sz字段（成交数量）
-                    if "sz" in filled_info:
-                        result["filled_quantity"] = float(filled_info["sz"])
-                        logger.info(f"成功获取已成交订单的数量: {result['filled_quantity']}")
-                    
-                    # 检查time字段（成交时间）
-                    if "time" in filled_info:
-                        timestamp_ms = int(filled_info["time"])
+                    # 获取成交时间
+                    # API返回的order.timestamp是订单创建时间，而应该使用statusTimestamp作为状态更新时间
+                    # 对于已成交的订单，statusTimestamp就是成交时间
+                    status_timestamp_ms = int(order_info.get('statusTimestamp', 0))
+                    if status_timestamp_ms > 0:
                         # 将毫秒时间戳转换为秒
-                        seconds_timestamp = timestamp_ms / 1000
+                        seconds_timestamp = status_timestamp_ms / 1000
                         # 转换为datetime对象
                         filled_datetime = datetime.fromtimestamp(seconds_timestamp)
                         result["filled_time"] = filled_datetime
                         logger.info(f"成功获取已成交订单的成交时间: {result['filled_time']}")
+                    else:
+                        # 如果没有statusTimestamp，使用当前时间作为备选
+                        filled_datetime = datetime.now()
+                        result["filled_time"] = filled_datetime
+                        logger.info(f"未找到statusTimestamp，设置已成交订单的成交时间为当前时间: {result['filled_time']}")
                     
-                    # 检查成交价格字段（可能是px或price）
-                    if "px" in filled_info:
-                        result["filled_price"] = Decimal(str(filled_info["px"]))
-                        logger.info(f"成功获取已成交订单的成交价格(px): {result['filled_price']}")
-                    elif "price" in filled_info:
-                        result["filled_price"] = Decimal(str(filled_info["price"]))
-                        logger.info(f"成功获取已成交订单的成交价格(price): {result['filled_price']}")
+                    # 获取成交价格
+                    if "limitPx" in order_data:
+                        result["filled_price"] = Decimal(str(order_data["limitPx"]))
+                        logger.info(f"成功获取已成交订单的成交价格: {result['filled_price']}")
                     
-                    # 检查是否需要查询历史成交记录以获取拆分成交的信息
-                    if order_status == "FILLED":
-                        # 尝试查询历史成交记录，看是否有多笔成交
-                        fills_result = _get_order_details_from_fills(trader, order_id)
-                        if fills_result["status"] == "success" and "filled_quantity" in fills_result:
-                            # 如果找到多笔成交记录，使用累计的数量和费用
-                            if fills_result.get("source") == "user_fills" and len(fills_result.get("matching_fills", [])) > 1:
-                                logger.info(f"订单 {order_id} 拆分成交，使用累计的成交数量和费用")
-                                return fills_result
+                    # 在订单状态中手续费信息通常不存在，设置默认值
+                    result["fee"] = Decimal('0')
+                    logger.info(f"使用默认手续费值: {result['fee']}")
+                    
+                    # 如果订单数据中包含fee字段（不太可能），则使用它
+                    if "fee" in order_data:
+                        result["fee"] = Decimal(str(order_data["fee"]))
+                        logger.info(f"从订单状态中获取到手续费: {result['fee']}")
+                    
+                    # 如果需要手续费的精确值，可以在订单成交后通过其他方式更新
+                    # 例如，可以通过定期任务或其他方式获取手续费并更新订单记录
+                    
+                    return result
                 
                 # 如果订单部分成交，获取部分成交信息
-                elif "filled" in status and "resting" in status:
-                    # 订单部分成交
-                    filled_info = status["filled"]
-                    logger.debug(f"订单部分成交，成交信息: {filled_info}")
-                    
-                    # 检查fee字段
-                    if "fee" in filled_info:
-                        result["fee"] = Decimal(str(filled_info["fee"]))
-                        logger.info(f"成功获取部分成交订单的手续费: {result['fee']}")
-                    
-                    # 检查sz字段（成交数量）
-                    if "sz" in filled_info:
-                        result["filled_quantity"] = float(filled_info["sz"])
+                elif order_status_str == 'partial_fill':
+                    # 如果有部分成交信息
+                    if "sz" in order_data:
+                        result["filled_quantity"] = float(order_data["sz"])
                         logger.info(f"成功获取部分成交订单的数量: {result['filled_quantity']}")
                     
-                    # 检查time字段（成交时间）
-                    if "time" in filled_info:
-                        timestamp_ms = int(filled_info["time"])
+                    # 在订单状态中手续费信息通常不存在，设置默认值
+                    result["fee"] = Decimal('0')
+                    logger.info(f"使用默认手续费值: {result['fee']}")
+                    
+                    # 如果订单数据中包含fee字段（不太可能），则使用它
+                    if "fee" in order_data:
+                        result["fee"] = Decimal(str(order_data["fee"]))
+                        logger.info(f"从订单状态中获取到手续费: {result['fee']}")
+                    
+                    # 如果需要手续费的精确值，可以在订单成交后通过其他方式更新
+                    # 例如，可以通过定期任务或其他方式获取手续费并更新订单记录
+                    
+                    # 获取成交时间
+                    # 对于部分成交的订单，也使用statusTimestamp作为成交时间
+                    status_timestamp_ms = int(order_info.get('statusTimestamp', 0))
+                    if status_timestamp_ms > 0:
                         # 将毫秒时间戳转换为秒
-                        seconds_timestamp = timestamp_ms / 1000
+                        seconds_timestamp = status_timestamp_ms / 1000
                         # 转换为datetime对象
                         filled_datetime = datetime.fromtimestamp(seconds_timestamp)
                         result["filled_time"] = filled_datetime
                         logger.info(f"成功获取部分成交订单的成交时间: {result['filled_time']}")
+                    else:
+                        # 如果没有statusTimestamp，使用当前时间作为备选
+                        filled_datetime = datetime.now()
+                        result["filled_time"] = filled_datetime
+                        logger.info(f"未找到statusTimestamp，设置部分成交订单的成交时间为当前时间: {result['filled_time']}")
                     
-                    # 检查成交价格字段（可能是px或price）
-                    if "px" in filled_info:
-                        result["filled_price"] = Decimal(str(filled_info["px"]))
-                        logger.info(f"成功获取部分成交订单的成交价格(px): {result['filled_price']}")
-                    elif "price" in filled_info:
-                        result["filled_price"] = Decimal(str(filled_info["price"]))
-                        logger.info(f"成功获取部分成交订单的成交价格(price): {result['filled_price']}")
+                    # 获取成交价格
+                    if "limitPx" in order_data:
+                        result["filled_price"] = Decimal(str(order_data["limitPx"]))
+                        logger.info(f"成功获取部分成交订单的成交价格: {result['filled_price']}")
                 
                 return result
             
-            # 如果查询结果为空或没有statuses字段，尝试查询历史成交记录
-            logger.info(f"通过query_order_by_cloid未获取到有效信息，尝试查询历史成交记录")
-            return _get_order_details_from_fills(trader, order_id)
+            # 如果查询结果为空或没有有效信息，返回错误
+            logger.info(f"通过query_order_by_cloid未获取到有效信息")
+            return {"status": "error", "error": "未能获取订单状态信息"}
             
         except Exception as e:
             logger.error(f"使用query_order_by_cloid方法查询订单状态时出错: {str(e)}")
-            # 如果query_order_by_cloid方法失败，尝试查询历史成交记录
-            return _get_order_details_from_fills(trader, order_id)
+            return {"status": "error", "error": f"查询订单状态时出错: {str(e)}"}
     
     except Exception as e:
         logger.error(f"获取订单详情时出错: {str(e)}")
@@ -367,75 +372,7 @@ def get_order_details(trader, symbol, order_id, order_status):
         return {"status": "error", "error": f"获取订单详情时出错: {str(e)}"}
 
 
-def _get_order_details_from_fills(trader, order_id):
-    """
-    从历史成交记录中获取订单详情
-    
-    :param trader: 交易对象
-    :param order_id: 订单ID
-    :return: 订单详情
-    """
-    try:
-        logger.info(f"尝试通过userFills方法查询订单信息...")
-        user_fills = trader.info.user_fills(trader.wallet_address)
-        logger.debug(f"获取到 {len(user_fills)} 条成交记录")
-        
-        # 查找所有匹配的订单记录（处理拆分成交的情况）
-        matching_fills = []
-        for fill in user_fills:
-            if str(fill.get("oid")) == str(order_id):
-                matching_fills.append(fill)
-                logger.info(f"在成交记录中找到匹配的订单: {fill}")
-        
-        # 如果找到匹配的成交记录
-        if matching_fills:
-            # 初始化累计值
-            total_fee = Decimal('0')
-            total_filled_quantity = Decimal('0')
-            filled_time = None
-            filled_price = None
-            
-            # 累加所有匹配记录的数量和手续费
-            for fill in matching_fills:
-                # 提取关键信息
-                fee = fill.get("fee")
-                if fee is not None:
-                    total_fee += Decimal(str(fee))
-                
-                quantity = fill.get("sz")  # 成交数量
-                if quantity is not None:
-                    total_filled_quantity += Decimal(str(quantity))
-                
-                # 使用最新的成交时间和价格
-                current_time = fill.get("time")
-                if filled_time is None or (current_time is not None and current_time > filled_time):
-                    filled_time = current_time
-                    filled_price = fill.get("px")  # 实际成交价格
-            
-            logger.info(f"订单 {order_id} 拆分成 {len(matching_fills)} 笔成交，总成交数量: {total_filled_quantity}，总手续费: {total_fee}")
-            
-            return {
-                "status": "success",
-                "fee": total_fee,
-                "filled_quantity": float(total_filled_quantity),
-                "filled_time": filled_time,
-                "filled_price": Decimal(str(filled_price)) if filled_price is not None else None,
-                "source": "user_fills",
-                "matching_fills": matching_fills  # 添加匹配的成交记录，用于判断是否是拆分成交
-            }
-        
-        logger.info(f"在成交记录中未找到订单ID为 {order_id} 的记录")
-        return {
-            "status": "success",
-            "fee": Decimal('0'),
-            "filled_quantity": None,
-            "filled_time": None,
-            "source": "no_fills_found"
-        }
-            
-    except Exception as e:
-        logger.error(f"通过userFills方法查询订单信息时出错: {str(e)}")
-        return {"status": "error", "error": f"通过userFills方法查询订单信息时出错: {str(e)}"}
+
 
 
 def manually_update_order_details(order_record_id):
@@ -454,12 +391,13 @@ def manually_update_order_details(order_record_id):
         
         # 获取订单详情
         trader = HyperliquidTrader()
-        order_details = get_order_details(trader, order_record.symbol, order_record.order_id, order_record.status)
+        order_details = get_order_details(trader, order_record.symbol, order_record.cloid, order_record.status)  # 使用交易所订单号查询
         
         if order_details and order_details["status"] == "success":
             # 记录更新前的值
             old_values = {
-                "oid": order_record.oid,
+                "order_id": order_record.order_id,  # 我们系统的订单号
+                "cloid": order_record.cloid,      # 交易所的订单号
                 "fee": order_record.fee,
                 "filled_time": order_record.filled_time,
                 "order_type": order_record.order_type,
@@ -472,11 +410,11 @@ def manually_update_order_details(order_record_id):
             updates = []
             
             # 更新订单记录
-            if "oid" in order_details and order_details["oid"] is not None and order_record.oid != order_details["oid"]:
-                order_record.oid = str(order_details["oid"])
+            if "cloid" in order_details and order_details["cloid"] is not None and order_record.cloid != order_details["cloid"]:
+                order_record.cloid = str(order_details["cloid"])  # 更新交易所订单号
                 has_updates = True
-                updates.append(f"渠道订单ID: {mask_sensitive_info(old_values['oid'])} -> {mask_sensitive_info(order_details['oid'])}")
-                logger.info(f"更新订单渠道ID: {mask_sensitive_info(old_values['oid'])} -> {mask_sensitive_info(order_details['oid'])}")
+                updates.append(f"交易所订单号: {mask_sensitive_info(old_values['cloid'])} -> {mask_sensitive_info(order_details['cloid'])}")
+                logger.info(f"更新交易所订单号: {mask_sensitive_info(old_values['cloid'])} -> {mask_sensitive_info(order_details['cloid'])}")
             
             if "fee" in order_details and order_details["fee"] is not None and order_record.fee != order_details["fee"]:
                 order_record.fee = Decimal(str(order_details["fee"]))

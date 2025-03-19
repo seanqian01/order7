@@ -257,7 +257,7 @@ class OrderRecord(models.Model):
     is_stop_loss = models.BooleanField('是否是止损单', default=False)  
     
     # 新增字段
-    oid = models.CharField('渠道订单ID', max_length=50, null=True, blank=True, help_text='交易所平台的原始订单ID')
+    cloid = models.CharField('渠道订单ID', max_length=50, null=True, blank=True, help_text='交易所平台的原始订单ID')
     fee = models.DecimalField('手续费', max_digits=18, decimal_places=2, null=True, blank=True, help_text='订单成交的手续费')
     order_type = models.CharField('订单类型', max_length=20, choices=ORDER_TYPES, default='UNKNOWN', help_text='订单类型：开仓单，平仓单')
     filled_time = models.DateTimeField('成交时间', null=True, blank=True, help_text='订单成交时间')

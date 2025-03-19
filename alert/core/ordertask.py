@@ -125,8 +125,8 @@ class OrderMonitor:
                 max_cancel_retries = 2
                 current_interval = monitor_config['initial_interval']
                 
-                # 初始状态检查 - 使用新的直接查询方法
-                initial_status = self.trader.get_order_status(order_record.symbol, order_record.order_id)
+                # 初始状态检查 - 使用渠道订单号查询
+                initial_status = self.trader.get_order_status(order_record.symbol, order_record.cloid)
                 if initial_status and initial_status["status"] == "success":
                     if initial_status["order_status"] == "FILLED":
                         # 订单已成交，直接处理成交逻辑
@@ -149,11 +149,16 @@ class OrderMonitor:
                             logger.info(f"订单 {order_record.order_id} 成交后继续监控")
                         
                     elif initial_status["order_status"] in ["PENDING", "PARTIALLY_FILLED"]:
-                        order_record.status = "SUBMITTED"
+                        # 如果是 PENDING 状态，保留原始状态
+                        # 如果是 PARTIALLY_FILLED 状态，设置为 PARTIALLY_FILLED
                         if initial_status["order_status"] == "PARTIALLY_FILLED":
+                            order_record.status = "PARTIALLY_FILLED"
                             order_record.filled_quantity = initial_status["filled_quantity"]
-                        async_db_handler.async_save(order_record)  # 使用异步保存
-                        logger.info(f"订单 {order_record.order_id} 已确认提交，状态: {initial_status['order_status']}")
+                            async_db_handler.async_save(order_record)  # 使用异步保存
+                            logger.info(f"订单 {order_record.order_id} 部分成交，状态: {initial_status['order_status']}")
+                        else:
+                            # PENDING 状态保持不变，不需要更新
+                            logger.info(f"订单 {order_record.order_id} 状态为 PENDING，保持原状态")
                 
                 # 记录上次状态，用于检测状态变化
                 last_status = initial_status["order_status"] if initial_status and initial_status["status"] == "success" else "UNKNOWN"
@@ -179,8 +184,8 @@ class OrderMonitor:
                     else:
                         current_interval = monitor_config['normal_interval']
                     
-                    # 使用新的直接查询方法获取订单状态
-                    order_status = self.trader.get_order_status(order_record.symbol, order_record.order_id)
+                    # 使用渠道订单号查询订单状态
+                    order_status = self.trader.get_order_status(order_record.symbol, order_record.cloid)
                     
                     if order_status and order_status["status"] == "success":
                         current_status = order_status["order_status"]
@@ -232,7 +237,7 @@ class OrderMonitor:
                         logger.info(f"订单 {order_record.order_id} 已超时 {elapsed_time:.1f}秒，准备撤单")
                         
                         # 撤单前再次检查状态
-                        final_check = self.trader.get_order_status(order_record.symbol, order_record.order_id)
+                        final_check = self.trader.get_order_status(order_record.symbol, order_record.cloid)
                         if final_check and final_check["status"] == "success":
                             # 如果订单已完全成交
                             if final_check["order_status"] == "FILLED":

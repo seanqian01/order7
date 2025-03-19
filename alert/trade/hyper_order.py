@@ -89,7 +89,7 @@ def place_hyperliquid_order(alert_data, quantity=None):
                 # 创建订单记录
                 try:
                     order_record = OrderRecord.objects.create(
-                        order_id=str(order_info["order_id"]),  # 确保转换为字符串
+                        order_id=str(order_info["order_id"]),  # 我们系统的订单号（从API的oid字段获取）
                         symbol=alert_data.symbol,
                         side=alert_data.action,
                         price=alert_data.price,
@@ -99,7 +99,7 @@ def place_hyperliquid_order(alert_data, quantity=None):
                         reduce_only=reduce_only,
                         is_stop_loss=False,  # 这不是止损单
                         order_type="CLOSE" if reduce_only else "OPEN",  # 根据reduce_only标志设置订单类型
-                        oid=str(order_info["cloid"])  # 保存渠道订单ID (cloid)
+                        cloid=str(order_info["cloid"])  # 交易所的订单号（从API的cloid字段获取）
                     )
                     
                     # 启动订单监控线程
@@ -213,7 +213,8 @@ def place_stop_loss_order(original_order_record):
             # 创建止损单记录
             try:
                 stop_loss_record = OrderRecord.objects.create(
-                    order_id=str(order_info["order_id"]),
+                    order_id=str(order_info["order_id"]),  # 我们系统的订单号（从API的oid字段获取）
+                    cloid=str(order_info["cloid"]),      # 交易所的订单号（从API的cloid字段获取）
                     symbol=original_order_record.symbol,
                     side=stop_loss_side,
                     price=stop_loss_price,  # 使用触发价格作为价格

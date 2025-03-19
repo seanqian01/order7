@@ -203,16 +203,16 @@ admin.site.register(User, MyUserAdmin)
 # 订单记录的只读Admin界面
 class OrderRecordAdmin(admin.ModelAdmin):
     list_display = [
-        'order_id', 'short_oid', 'symbol', 'side', 'order_type', 'price', 'quantity', 
+        'order_id', 'short_cloid', 'symbol', 'side', 'order_type', 'price', 'quantity', 
         'filled_price','filled_quantity', 'status', 'is_stop_loss', 
          'fee', 'formatted_filled_time', 'formatted_create_time'
     ]
     list_filter = ['status', 'side', 'is_stop_loss', 'reduce_only', 'order_type', 'create_time']
-    search_fields = ['order_id', 'symbol', 'oid']
+    search_fields = ['order_id', 'symbol', 'cloid']
     readonly_fields = [
         'order_id', 'symbol', 'side', 'price', 'quantity', 
         'filled_quantity', 'status', 'reduce_only', 'is_stop_loss',
-        'oid', 'fee', 'order_type', 'formatted_filled_time', 'formatted_create_time', 'formatted_update_time'
+        'cloid', 'fee', 'order_type', 'formatted_filled_time', 'formatted_create_time', 'formatted_update_time'
     ]
     # 移除date_hierarchy以避免时区问题
     # date_hierarchy = 'create_time'
@@ -303,12 +303,12 @@ class OrderRecordAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
     
-    def short_oid(self, obj):
+    def short_cloid(self, obj):
         """只显示渠道订单ID的后6位"""
-        if obj.oid:
-            return f"...{obj.oid[-6:]}"
+        if obj.cloid:
+            return f"...{obj.cloid[-6:]}"
         return "-"
-    short_oid.short_description = "渠道订单ID"
+    short_cloid.short_description = "渠道订单ID"
     
     def formatted_create_time(self, obj):
         """格式化创建时间，精确到秒，使用上海时区"""
