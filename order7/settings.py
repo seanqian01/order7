@@ -119,12 +119,12 @@ AUTH_USER_MODEL = 'alert.User'
 
 STATIC_URL = 'static/'
 
-if DEBUG == False:
-    STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
-else:
-    STATICFILES_DIRS = [
-        os.path.join(BASE_DIR, "alert/static/")
-    ]
+# 静态文件配置
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # 收集静态文件的目标目录
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "alert/static"),  # 应用专属静态文件目录
+    os.path.join(BASE_DIR, "static")         # 项目全局静态文件目录
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
