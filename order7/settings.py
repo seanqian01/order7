@@ -136,14 +136,16 @@ CORS_ORIGIN_ALLOW_ALL = True
 CORS_ORIGIN_WHITELIST = (
     'http://localhost',
     'https://127.0.0.1',
-    'https://api.iaiking.com',
+    'https://api.ibettersoft.com',
+    'https://ibettersoft.com',
+    'https://www.ibettersoft.com',
     'https://www.tradingview.com',
-    'http://iaiblog.com',
 )
 
-CSRF_TRUSTED_ORIGINS = ['https://api.iaiking.com',
+CSRF_TRUSTED_ORIGINS = ['https://api.ibettersoft.com',
+                        'https://ibettersoft.com',
+                        'https://www.ibettersoft.com',
                         'https://www.tradingview.com',
-                        'http://iaiblog.com',
                         ]
 
 CORS_ALLOW_METHODS = (
