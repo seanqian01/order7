@@ -9,8 +9,8 @@ from django.contrib.admin.models import LogEntry
 
 logger = logging.getLogger(__name__)
 
-admin.site.site_header = "vcpos_量化交易管理系统"
-admin.site.site_title = "量化交易管理系统--vcpos"
+admin.site.site_header = "ibettersoft_量化交易管理系统"
+admin.site.site_title = "量化交易管理系统--ibettersoft"
 
 
 class stra_AlertResource(resources.ModelResource):
