@@ -8,6 +8,8 @@ class TimeCycle(models.Model):
 
     class Meta:
         db_table = 'TimeCycle'
+        verbose_name = '时间周期'
+        verbose_name_plural = verbose_name
 
     def __str__(self):
         return self.name

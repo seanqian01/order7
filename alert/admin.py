@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.http import HttpRequest
-from alert.models import stra_Alert, Strategy, Merchant, User, Exchange, ContractCode, OrderRecord
+from alert.models import stra_Alert, Strategy, Merchant, User, Exchange, ContractCode, OrderRecord, TimeCycle
 from django.contrib.auth.admin import UserAdmin
 import logging
 from import_export.admin import ImportExportModelAdmin, ExportActionModelAdmin
@@ -17,6 +17,7 @@ class stra_AlertResource(resources.ModelResource):
     price = fields.Field(attribute='price', column_name='价格')
     alert_title = fields.Field(attribute='alert_title', column_name='信号描述')
     contractType = fields.Field(attribute='contractType', column_name='交易合约类型')
+    strategy_id = fields.Field(attribute='strategy_id', column_name='策略ID')
 
     class Meta:
         model = stra_Alert
@@ -191,6 +192,12 @@ class ContractCodeAdmin(admin.ModelAdmin):
     list_filter = ['exchange', 'product_type', 'is_active']
     search_fields = ['symbol', 'name']
     raw_id_fields = ['exchange']
+
+@admin.register(TimeCycle)
+class TimeCycleAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name']
+    search_fields = ['name']
+    list_per_page = 20
 
 admin.site.register(Strategy, StrategyAdmin)
 
