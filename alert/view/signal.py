@@ -1,7 +1,7 @@
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
-from alert.models import stra_Alert, TimeCycle, ContractCode, OrderRecord
+from alert.models import stra_Alert, TimeCycle, ContractCode, OrderRecord, Strategy
 import json
 from rest_framework.response import Response
 from rest_framework import status
@@ -36,12 +36,17 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
             alert_scode = json_data.get('scode')
             alert_contractType = int(json_data.get('contractType'))  # 确保合约类型是整数
             alert_price = json_data.get('price')
+            alert_strategy_id = int(json_data.get('strategy_id'))
             # 确保价格保由5位小数精度
             try:
                 alert_price = float(alert_price)
-                alert_price = round(alert_price, 5)
+                # alert_price = round(alert_price, 5)
             except (ValueError, TypeError):
                 pass
+
+            
+            
+
             alert_action = json_data.get('action')
             time_circle_name = json_data.get('time_circle')
 
@@ -49,6 +54,13 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
 
             # 查询或创建对应的 TimeCycle 实例
             time_circle_instance, created = TimeCycle.objects.get_or_create(name=time_circle_name)
+            
+            # 获取对应的 Strategy 实例
+            try:
+                strategy_instance = Strategy.objects.get(id=alert_strategy_id)
+            except Strategy.DoesNotExist:
+                logger.error(f"策略ID {alert_strategy_id} 不存在")
+                return HttpResponse(f'策略ID {alert_strategy_id} 不存在', status=400)
 
             # 创建信号对象
             trading_view_alert_data = stra_Alert(
@@ -59,7 +71,8 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 price=alert_price,
                 action=alert_action,
                 created_at=timezone.now(),
-                time_circle=time_circle_instance
+                time_circle=time_circle_instance,
+                strategy=strategy_instance,  # 使用Strategy实例而不是ID值
                 # status默认为False，表示无效
             )
             

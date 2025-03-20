@@ -82,7 +82,7 @@ class stra_Alert(models.Model):
     status = models.BooleanField(default=False, blank=True, verbose_name="有效性")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="触发时间")
     time_circle = models.ForeignKey(TimeCycle, on_delete=models.CASCADE, null=True, blank=True, verbose_name="时间周期")
-    strategy_id = models.ForeignKey(Strategy, on_delete=models.CASCADE, null=True, blank=True, verbose_name="策略ID")
+    strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, null=True, blank=True, verbose_name="策略ID")
 
     def __str__(self):
         return self.scode
