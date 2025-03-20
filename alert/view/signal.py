@@ -85,14 +85,15 @@ def webhook(request, local_secret_key="senaiqijdaklsdjadhjaskdjadkasdasdasd"):
                 trading_view_alert_data.status = True
                 logger.info(f"信号有效，状态设置为True: {alert_symbol} {alert_action}")
                 
-                # 异步保存有效信号
-                async_db_handler.async_save(trading_view_alert_data)
-                logger.info(f"异步保存有效信号: {alert_symbol} {alert_action}")
                 
                 # 异步处理有效信号（添加到处理队列）
                 # 注意：这里我们直接将信号添加到处理队列，因为信号处理器会在单独的线程中处理
                 signal_processor.add_signal(trading_view_alert_data)
                 logger.info(f"信号已添加到处理队列: {alert_symbol} {alert_action}")
+                
+                # 异步保存有效信号
+                async_db_handler.async_save(trading_view_alert_data)
+                logger.info(f"异步保存有效信号: {alert_symbol} {alert_action}")
                 
                 return HttpResponse('信号已接收并加入处理队列', status=200)
             else:

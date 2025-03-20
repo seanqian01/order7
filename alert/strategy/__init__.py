@@ -21,7 +21,7 @@ def register_strategy(strategy_id):
     """
     def decorator(strategy_func):
         STRATEGY_REGISTRY[strategy_id] = strategy_func
-        logger.info(f"注册策略: ID={strategy_id}, 函数={strategy_func.__name__}")
+        # 不再为每个策略单独记录日志
         return strategy_func
     return decorator
 
@@ -50,19 +50,27 @@ def RunStrategy(strategy_id, alert_data):
         logger.error(f"执行策略 {strategy_id} 时出错: {str(e)}")
         return False
 
-# 自动导入所有策略模块
 def import_all_strategies():
     """自动导入策略目录下的所有策略模块"""
     strategy_dir = os.path.dirname(os.path.abspath(__file__))
+    imported_count = 0
+    failed_count = 0
+    
     for filename in os.listdir(strategy_dir):
         if filename.endswith('.py') and filename != '__init__.py':
             module_name = filename[:-3]  # 移除.py后缀
             module_path = f"alert.strategy.{module_name}"
             try:
                 importlib.import_module(module_path)
-                logger.info(f"已导入策略模块: {module_path}")
+                imported_count += 1
             except ImportError as e:
                 logger.error(f"导入策略模块 {module_path} 失败: {str(e)}")
+                failed_count += 1
+    
+    # 只记录一条汇总日志，而不是每个策略一条
+    logger.info(f"策略初始化完成: 已加载 {imported_count} 个策略模块, 注册 {len(STRATEGY_REGISTRY)} 个策略函数")
+    if failed_count > 0:
+        logger.warning(f"有 {failed_count} 个策略模块导入失败")
 
 # 在模块加载时自动导入所有策略
 import_all_strategies()
